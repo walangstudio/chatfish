@@ -12,4 +12,5 @@ First release.
 - Eight regulars with fixed personalities who talk to each other and answer you in character.
 - Audience that ramps up from zero, drifts, leaves when nothing happens, and gets raided.
 - Streamer name from your Claude display name, falling back to your email's local part.
+- Settings (name, mode, viewers, rate) persist across sessions.
 - Warns when loaded on Claude Code older than 2.1.281.

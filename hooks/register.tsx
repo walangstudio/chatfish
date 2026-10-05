@@ -3,10 +3,10 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Activity, Badge, ChatLine, Config } from '../types'
 import {
-  DEFAULT_CONFIG, MIN_CLAUDE_CODE, NEW_CROWD, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
+  DEFAULT_CONFIG, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, toSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
   nameColor, parseArgs, parseModelLines, systemPrompt, userPrompt,
 } from './chat'
-import type { Parsed } from './chat'
+import type { Crowd, Parsed } from './chat'
 import { cannedChat } from './canned'
 
 type Engine = EngineInterface
@@ -36,16 +36,15 @@ const BADGE: Record<Badge, { emoji: string; bg: string; icon: string }> = {
 const badgeSvg = (b: Badge) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><rect width="18" height="18" rx="3" fill="${BADGE[b].bg}"/><g fill="#fff">${BADGE[b].icon}</g></svg>`
 
+// One live stream. Going live or offline replaces it, so anything still running for the old
+// one sees it is stale and drops its work instead of leaking into the next stream.
+// ponytail: lives in the module, so a mod reload starts a fresh crowd; move to $.state if that shows.
+type Stream = { isBusy: boolean; isQueued: boolean; seenSeq: number; crowdSeq: number; idleTicks: number; crowd: Crowd }
+const newStream = (seq = 0): Stream => ({ isBusy: false, isQueued: false, seenSeq: seq, crowdSeq: seq, idleTicks: 0, crowd: NEW_CROWD })
+
+let stream = newStream()
 let ticker: Timer | undefined
-let isBusy = false
-let seenSeq = 0
-let idleTicks = 0
 let isTurnRunning = false
-// ponytail: the crowd lives in the module, a reload resets it; move to $.state if that ever shows.
-let crowd = NEW_CROWD
-let crowdSeq = 0
-// Bumped when a stream starts or ends; work begun under an older stream drops itself.
-let streamId = 0
 let autoName = ''
 
 // Claude Code keeps the claude.ai profile (display name, email) in ~/.claude.json.
@@ -78,11 +77,37 @@ async function record($: Engine, kind: Activity['kind'], text: string) {
   await update($, activity, list => [...list, { seq: (list.at(-1)?.seq ?? 0) + 1, at, kind, text }].slice(-15))
 }
 
+// For hooks on the session's hot path: chat bookkeeping must never hold up a tool or a turn.
+function note($: Engine, kind: Activity['kind'], text: string) {
+  record($, kind, text).catch(() => {})
+}
+
+async function say($: Engine, cfg: Config, text: string) {
+  await addLines($, [{ kind: 'streamer', user: streamerName(cfg), text }])
+  await record($, 'reply', text)
+  void tick($)
+}
+
+const saveSettings = ($: Engine, cfg: Config) => $.store.set('settings', toSaved(cfg))
+
+// Settings from earlier sessions, merged in once on first use.
+let hasLoadedSaved = false
+async function loadSaved($: Engine) {
+  if (hasLoadedSaved) return
+  hasLoadedSaved = true
+  const saved = fromSaved(await $.store.get('settings'))
+  if (Object.keys(saved).length) await update($, config, c => ({ ...c, ...saved }))
+}
+
 async function tick($: Engine) {
-  if (isBusy) return
-  isBusy = true
-  const id = streamId
-  const isStale = () => id !== streamId
+  const s = stream
+  // A tick already talking to Haiku for this stream: run once more when it finishes.
+  if (s.isBusy) {
+    s.isQueued = true
+    return
+  }
+  s.isBusy = true
+  const isStale = () => s !== stream
   try {
     const cfg = await read($, config)
     if (!cfg.live) return
@@ -90,14 +115,14 @@ async function tick($: Engine) {
     const all = await read($, activity)
     const idleMs = now - Math.max(cfg.startedAt, all.at(-1)?.at ?? 0)
     if (isStale()) return
-    crowd = stepCrowd(crowd, { idleMs, events: all.filter(a => a.seq > crowdSeq).map(a => a.kind) })
-    crowdSeq = all.at(-1)?.seq ?? crowdSeq
+    s.crowd = stepCrowd(s.crowd, { idleMs, events: all.filter(a => a.seq > s.crowdSeq).map(a => a.kind) })
+    s.crowdSeq = all.at(-1)?.seq ?? s.crowdSeq
     const before = await read($, viewerCount)
     if (isStale()) return
-    const viewers = nextViewers(before, liveViewers(cfg.viewers, now - cfg.startedAt), crowd)
+    const viewers = nextViewers(before, liveViewers(cfg.viewers, now - cfg.startedAt), s.crowd)
     const raid = maybeRaid(viewers, cfg.viewers)
     if (raid) {
-      crowd = { ...crowd, raid: crowd.raid + raid.size }
+      s.crowd = { ...s.crowd, raid: s.crowd.raid + raid.size }
       await addLines($, [{ kind: 'notice', user: raid.from, text: `is raiding with ${raid.size} viewers!` }])
       await record($, 'raid', `${raid.from} just raided the stream with ${raid.size} viewers`)
     }
@@ -108,13 +133,13 @@ async function tick($: Engine) {
     $.ui.status(`● LIVE ${formatViewers(viewers)}`)
     const count = batchSize(cfg.rate, viewers)
     if (count === 0) return
-    const fresh = all.filter(a => a.seq > seenSeq)
-    seenSeq = all.at(-1)?.seq ?? seenSeq
+    const fresh = all.filter(a => a.seq > s.seenSeq)
+    s.seenSeq = all.at(-1)?.seq ?? s.seenSeq
     // ponytail: Haiku only on new activity or every 3rd idle tick; canned lines fill the rest to cap cost.
-    const useModel = fresh.length > 0 || ++idleTicks % 3 === 0
+    const useModel = fresh.length > 0 || ++s.idleTicks % 3 === 0
     let next: Parsed[] = []
     if (useModel) {
-      idleTicks = 0
+      s.idleTicks = 0
       const replies = fresh.filter(a => a.kind === 'reply').map(a => a.text)
       const said = (await read($, lines)).filter(l => l.kind !== 'system')
       // A conversation needs more memory than plain hype does.
@@ -150,7 +175,11 @@ async function tick($: Engine) {
       if (!isStale()) void addLines($, [line])
     }))
   } finally {
-    isBusy = false
+    s.isBusy = false
+    if (s.isQueued && !isStale()) {
+      s.isQueued = false
+      void tick($)
+    }
   }
 }
 
@@ -162,7 +191,7 @@ function start($: Engine, cfg: Config) {
 
 function stop($: Engine) {
   ticker?.cancel()
-  streamId++
+  stream = newStream()
   ticker = undefined
   $.ui.status(undefined)
 }
@@ -184,9 +213,10 @@ export const register: Register = on => {
       $.ui.toast(`chatfish needs Claude Code ${MIN_CLAUDE_CODE} or later (this is ${version}); some parts may not work.`)
     }
     autoName = await lookupName($)
+    await loadSaved($)
     const cfg = await read($, config)
     if (cfg.live) {
-      seenSeq = crowdSeq = (await read($, activity)).at(-1)?.seq ?? 0
+      stream = newStream((await read($, activity)).at(-1)?.seq ?? 0)
       void $.ui.open({ id: PANE, title: 'Stream Chat' })
       start($, cfg)
     }
@@ -195,6 +225,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'chatfish' }, async ($, e) => {
     const cmd = parseArgs(e.args)
+    await loadSaved($)
     const cfg = await read($, config)
     switch (cmd.kind) {
       case 'error':
@@ -208,6 +239,7 @@ export const register: Register = on => {
         return { text: 'chatfish is offline.' }
       case 'config': {
         const nextCfg = await update($, config, c => ({ ...c, ...cmd.patch }))
+        await saveSettings($, nextCfg)
         if (nextCfg.live && nextCfg.rate !== cfg.rate) start($, nextCfg)
         return { text: `chatfish settings: ${describe(nextCfg)}${nextCfg.live ? ' (applied live)' : ''}` }
       }
@@ -217,13 +249,10 @@ export const register: Register = on => {
         const isGoingLive = live && !cfg.live
         const now = await $.clock.now()
         const nextCfg = await update($, config, c => ({ ...c, ...cmd.patch, live, startedAt: isGoingLive ? now : c.startedAt }))
+        await saveSettings($, nextCfg)
         if (!live) return { text: `chatfish settings saved (${describe(nextCfg)}). /chatfish on to go live.` }
         if (isGoingLive) {
-          streamId++
-          seenSeq = 0
-          idleTicks = 0
-          crowd = NEW_CROWD
-          crowdSeq = 0
+          stream = newStream()
           await update($, activity, () => [])
           await update($, viewerCount, () => 0)
           await update($, lines, () => [{ id: 1, kind: 'system', user: '', text: 'Welcome to the chat room!' }])
@@ -234,9 +263,7 @@ export const register: Register = on => {
       }
       case 'reply':
         if (!cfg.live) return { text: 'chatfish is offline. /chatfish on first.' }
-        await addLines($, [{ kind: 'streamer', user: streamerName(cfg), text: cmd.text }])
-        await record($, 'reply', cmd.text)
-        void tick($)
+        await say($, cfg, cmd.text)
         return {}
     }
   })
@@ -250,8 +277,10 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (!e.text.startsWith('/')) await record($, 'prompt', `Streamer asked the agent: "${e.text.slice(0, 160)}"`)
-    return next(e)
+    const result = await next(e)
+    // Announce only prompts that actually went through; another hook may have dropped it.
+    if (!result.drop && !e.text.startsWith('/')) note($, 'prompt', `Streamer asked the agent: "${e.text.slice(0, 160)}"`)
+    return result
   })
 
   on('tool.call', async ($, e, next) => {
@@ -259,10 +288,10 @@ export const register: Register = on => {
     const target = [input.command, input.file_path, input.pattern, input.url, input.description, input.query]
       .find(v => typeof v === 'string') as string | undefined
     const tool = String(e.tool)
-    await record($, 'tool', `Agent runs ${tool}${target ? `: ${clip(target)}` : ''}`)
+    note($, 'tool', `Agent runs ${tool}${target ? `: ${clip(target)}` : ''}`)
     const ran = await next(e)
-    if ('deny' in ran && ran.deny) await record($, 'error', `${tool} was blocked`)
-    else if (ran.isError) await record($, 'error', `${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`)
+    if ('deny' in ran && ran.deny) note($, 'error', `${tool} was blocked`)
+    else if (ran.isError) note($, 'error', `${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`)
     return ran
   })
 
@@ -274,9 +303,14 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId) return next(e)
     isTurnRunning = false
-    const answer = e.answer.trim()
-    if (answer) await record($, 'said', `Claude said: "${answer.slice(0, 200)}"`)
-    await record($, 'done', 'The agent finished its turn and is waiting for the streamer.')
+    if (e.isAborted || e.reason === 'aborted') note($, 'error', 'The streamer interrupted Claude mid-task.')
+    else if (e.reason === 'error') note($, 'error', 'Claude hit an error and stopped.')
+    else if (e.reason === 'refusal') note($, 'error', 'Claude refused the task.')
+    else {
+      const answer = e.answer.trim()
+      if (answer) note($, 'said', `Claude said: "${answer.slice(0, 200)}"`)
+      note($, 'done', 'The agent finished its turn and is waiting for the streamer.')
+    }
     return next(e)
   })
 
@@ -356,10 +390,7 @@ export const register: Register = on => {
               placeholder="Send a message"
               submitLabel="Chat"
               onSubmit={async text => {
-                if (!text.trim()) return
-                await addLines($, [{ kind: 'streamer', user: streamerName(cfg), text: text.trim() }])
-                await record($, 'reply', text.trim())
-                void tick($)
+                if (text.trim() && (await read($, config)).live) await say($, cfg, text.trim())
               }}
             />
           </Box>

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { cannedChat, cannedLine, cannedName, subject } from './canned'
 
-import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, systemPrompt, userPrompt } from './chat'
+import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
 
 const PANE = { component: 'Pane', requestId: 'chatfish', props: { title: 'Stream Chat', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} }, viewport: { columns: 40, rows: 200 } } as const
 const run = (args: string) => ({ command: 'chatfish', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } }) as const
@@ -33,6 +33,7 @@ test('parses model lines and notices, drops junk', async () => {
 
 test('live, reply and off drive the pane; model failure falls back to canned', async ($, on) => {
   const clock = mock.clock(on)
+  mock.store(on)
   const opened: string[] = []
   on('ui.open', (_$, e) => { opened.push(e.id); return { value: { isPlaced: true } } })
   on('ui.close', (_$, e) => { opened.splice(opened.indexOf(e.id), 1); return { value: undefined } })
@@ -64,6 +65,7 @@ test('live, reply and off drive the pane; model failure falls back to canned', a
 
 test('draws Twitch-style rows: notice card, mention highlight, desktop svg badges', async ($, on) => {
   const clock = mock.clock(on)
+  mock.store(on)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
@@ -95,7 +97,7 @@ test('prompt tells chat about silence, leaving viewers, regulars and the streame
   const base = { viewers: 800, trend: 'steady', uptimeMs: 600_000, idleMs: 0, isThinking: false, count: 4, activity: [], isNew: false, recent: [], replies: [] } as const
   expect(userPrompt({ ...base, idleMs: 95_000, isThinking: true })).toContain('Claude has been thinking for 2m')
   expect(userPrompt({ ...base, idleMs: 30_000 })).toContain('Nothing has happened for 30s')
-  expect(userPrompt({ ...base, trend: 'falling' })).toContain('Viewers are leaving')
+  expect(userPrompt({ ...base, trend: 'falling', idleMs: 60_000 })).toContain('Viewers are leaving')
   expect(userPrompt(base)).not.toContain('thinking for')
   expect(userPrompt({ ...base, replies: ['@async_annie monorepo or not?'] })).toContain('Anyone the streamer @mentions answers first')
   expect(systemPrompt('mixed', 'niño')).toContain('async_annie: senior backend dev')
@@ -116,6 +118,7 @@ test('config command parses key=value and key: value lists', async () => {
 
 test('config while live renames the streamer in chat', async ($, on) => {
   mock.clock(on)
+  mock.store(on)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
@@ -232,4 +235,40 @@ test('round-3 parsing edge cases', async () => {
   ])
   const ev = { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: F:\\opt\\projs\\hooks\\register.tsx' }
   expect(subject(ev)).toBe('register.tsx')
+})
+
+test('viewer counts read like Twitch at every size', async () => {
+  expect(formatViewers(999)).toBe('999')
+  expect(formatViewers(1200)).toBe('1.2K')
+  expect(formatViewers(45_000)).toBe('45K')
+  expect(formatViewers(999_499)).toBe('999K')
+  expect(formatViewers(999_500)).toBe('1M')
+  expect(formatViewers(1_000_000)).toBe('1M')
+  expect(formatViewers(1_500_000)).toBe('1.5M')
+})
+
+test('only an idle falling audience is blamed on boredom', async () => {
+  const base = { viewers: 800, trend: 'falling', uptimeMs: 600_000, idleMs: 5_000, isThinking: true, count: 4, activity: [], isNew: true, recent: [], replies: [] } as const
+  expect(userPrompt(base)).not.toContain('Viewers are leaving')
+  expect(userPrompt({ ...base, idleMs: 60_000 })).toContain('Viewers are leaving')
+})
+
+test('saved settings are re-checked before use', async () => {
+  expect(fromSaved({ mode: 'roast', viewers: 5000, rate: 'quiet', streamer: 'CodeCat' })).toEqual({ mode: 'roast', viewers: 5000, rate: 'quiet', streamer: 'CodeCat' })
+  expect(fromSaved({ mode: 'constructor', viewers: -4, rate: 7, streamer: 'two words' })).toEqual({})
+  expect(fromSaved(null)).toEqual({})
+  expect(fromSaved('junk')).toEqual({})
+})
+
+test('settings survive a new session through the store', async ($, on) => {
+  mock.clock(on)
+  mock.store(on, { settings: { mode: 'roast', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' } })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  const status = await $.command.run(run('status'))
+  expect(status.text).toContain('CodeCat, roast, 4K viewers, quiet')
+  await $.command.run(run('config mode=wholesome'))
+  const back = await $.command.run(run('status'))
+  expect(back.text).toContain('wholesome')
 })

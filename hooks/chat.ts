@@ -81,6 +81,22 @@ export function parseConfig(text: string): Partial<Config> | string {
   return found ? patch : 'nothing to set'
 }
 
+// Settings kept across sessions. The store is a file anyone can edit, so every field is re-checked.
+export type Saved = Pick<Config, 'mode' | 'viewers' | 'rate' | 'streamer'>
+
+export const toSaved = ({ mode, viewers, rate, streamer }: Config): Saved => ({ mode, viewers, rate, streamer })
+
+export function fromSaved(v: unknown): Partial<Saved> {
+  if (typeof v !== 'object' || v === null) return {}
+  const o = v as Record<string, unknown>
+  const out: Partial<Saved> = {}
+  if (typeof o.mode === 'string' && (MODES as readonly string[]).includes(o.mode)) out.mode = o.mode as Mode
+  if (typeof o.rate === 'string' && (RATES as readonly string[]).includes(o.rate)) out.rate = o.rate as Rate
+  if (typeof o.viewers === 'number' && Number.isInteger(o.viewers) && o.viewers >= 1 && o.viewers <= 1_000_000) out.viewers = o.viewers
+  if (typeof o.streamer === 'string' && (o.streamer === '' || toHandle(o.streamer) === o.streamer)) out.streamer = o.streamer
+  return out
+}
+
 export function parseArgs(args: string): Command {
   const trimmed = args.trim()
   if (trimmed === '' || trimmed.toLowerCase() === 'status') return { kind: 'status' }
@@ -186,6 +202,7 @@ export function badgesFor(user: string): Badge[] {
 }
 
 export function formatViewers(n: number) {
+  if (n >= 999_500) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '')}K` : String(n)
 }
 
@@ -261,7 +278,7 @@ export function userPrompt(o: {
 }) {
   const parts = [`Stream uptime: ${secs(o.uptimeMs)}. Viewers watching: ${o.viewers} (${o.trend}).`]
   if (o.uptimeMs < 90_000) parts.push('The stream just went live and the first few viewers are trickling in: greetings, "first", "just got here", asking what the stream is about.')
-  if (o.trend === 'falling') parts.push('Viewers are leaving because nothing is happening; a few say bye or complain it is boring.')
+  if (o.trend === 'falling' && o.idleMs >= 45_000) parts.push('Viewers are leaving because nothing is happening; a few say bye or complain it is boring.')
   if (o.activity.length) {
     const label = o.isNew ? 'Just happened on stream (oldest first)' : 'Earlier on stream (oldest first)'
     parts.push(`${label}:\n` + o.activity.map(a => `- ${a.text}`).join('\n'))

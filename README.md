@@ -50,6 +50,8 @@ You can also type straight into the "Send a message" box at the bottom of the pa
 
 ### Settings
 
+Settings stick across sessions.
+
 ```
 /chatfish config name=CodeCat viewers=5k
 /chatfish config nickname: CodeCat, audience: 300, mode: roast, rate: spam
