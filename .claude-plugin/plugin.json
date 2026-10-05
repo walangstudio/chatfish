@@ -1,0 +1,15 @@
+{
+  "name": "chatfish",
+  "displayName": "Chatfish",
+  "version": "0.1.0",
+  "description": "A fake Twitch chat in a side pane that watches Claude work and talks back. Requires Claude Code 2.1.281 or later with CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1.",
+  "author": {
+    "name": "scr1p7k177y",
+    "email": "scriptkitty@walang.studio"
+  },
+  "homepage": "https://github.com/walangstudio/chatfish",
+  "repository": "https://github.com/walangstudio/chatfish",
+  "license": "MIT",
+  "keywords": ["twitch", "chat", "fun", "mod", "pane", "streaming"],
+  "types": "./types/index.d.ts"
+}
