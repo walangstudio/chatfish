@@ -4,7 +4,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { Activity, Badge, ChatLine, Config } from '../types'
 import {
   DEFAULT_CONFIG, HELP, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
-  nameColor, parseArgs, parseModelLines, systemPrompt, userPrompt,
+  nameColor, parseArgs, parseModelLines, streamOpening, systemPrompt, userPrompt,
 } from './chat'
 import type { Crowd, Parsed } from './chat'
 import { cannedChat } from './canned'
@@ -44,8 +44,18 @@ const badgeSvg = (b: Badge) =>
 // One live stream. Going live or offline replaces it, so anything still running for the old
 // one sees it is stale and drops its work instead of leaking into the next stream.
 // ponytail: lives in the module, so a mod reload starts a fresh crowd; move to $.state if that shows.
-type Stream = { isBusy: boolean; isQueued: boolean; seenSeq: number; crowdSeq: number; idleTicks: number; crowd: Crowd }
-const newStream = (seq = 0): Stream => ({ isBusy: false, isQueued: false, seenSeq: seq, crowdSeq: seq, idleTicks: 0, crowd: NEW_CROWD })
+type Stream = {
+  isBusy: boolean; isQueued: boolean; seenSeq: number; crowdSeq: number; idleTicks: number; crowd: Crowd
+  // Picked once, so the first minute of chat plays out one scene instead of a new one every tick.
+  opening: string
+}
+const newStream = (seq = 0): Stream => ({
+  isBusy: false, isQueued: false, seenSeq: seq, crowdSeq: seq, idleTicks: 0, crowd: NEW_CROWD, opening: streamOpening(Math.random),
+})
+
+// Subagents Claude itself sent out. Other loops also carry an agent id (the engine's own forks
+// for compaction or memory, agent-team teammates); chat ignores those.
+const subagents = new Set<string>()
 
 let stream = newStream()
 let ticker: Timer | undefined
@@ -194,6 +204,7 @@ async function tick($: Engine, isReply = false) {
           count,
           activity: fresh.length ? fresh : all.slice(-5),
           isNew: fresh.length > 0,
+          opening: s.opening,
           recent,
           replies,
         }),
@@ -327,7 +338,9 @@ export const register: Register = on => {
     const target = [input.command, input.file_path, input.pattern, input.url, input.description, input.query]
       .find(v => typeof v === 'string') as string | undefined
     const tool = String(e.tool)
-    // Subagents run their own tools; chat tells them apart from the main agent.
+    // Loops chat does not follow, and the Agent tool itself (agent.spawn announces that), stay quiet.
+    const isOurs = !e.agentId || subagents.has(e.agentId)
+    if (!isOurs || tool === 'Agent' || tool === 'Task') return next(e)
     const who = e.agentId ? 'A subagent' : 'Agent'
     note($, ['tool', `${who} runs ${tool}${target ? `: ${clip(target)}` : ''}`])
     const ran = await next(e)
@@ -336,9 +349,14 @@ export const register: Register = on => {
     return ran
   })
 
-  on('agent.spawn', ($, e, next) => {
-    note($, ['subagent', `Claude sent a ${e.subagentType} subagent to: ${clip(e.description)}`])
-    return next(e)
+  on('agent.spawn', async ($, e, next) => {
+    const result = await next(e)
+    // Announce only subagents that actually start; teammates are an agent team's business.
+    if (!('deny' in result && result.deny) && !e.isTeammate) {
+      if (result.agentId) subagents.add(result.agentId)
+      note($, ['subagent', `Claude sent out a subagent (${e.subagentType}) to: ${clip(e.description)}`])
+    }
+    return result
   })
 
   on('turn.start', ($, e, next) => {
@@ -348,9 +366,13 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId) {
-      // A subagent's turn ends inside the main turn: report what it found, never "done".
-      const answer = e.answer.trim()
-      note($, ['subagent', answer ? `A subagent reported back: "${answer.slice(0, 160)}"` : 'A subagent finished its task.'])
+      // A subagent's turn ends inside the main turn: report how it went, never "done".
+      if (subagents.delete(e.agentId)) {
+        const answer = e.answer.trim()
+        if (e.isAborted || e.reason === 'aborted') note($, ['error', 'A subagent was stopped before it finished.'])
+        else if (e.reason === 'error' || e.reason === 'refusal') note($, ['error', 'A subagent hit a wall and gave up.'])
+        else note($, ['subagent', answer ? `A subagent reported back: "${answer.slice(0, 160)}"` : 'A subagent finished its task.'])
+      }
       return next(e)
     }
     isTurnRunning = false
