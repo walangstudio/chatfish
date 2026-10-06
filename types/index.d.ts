@@ -9,7 +9,7 @@ export type ChatLine = {
   user: string
   text: string
 }
-export type Activity = { seq: number; at: number; kind: 'prompt' | 'tool' | 'error' | 'done' | 'reply' | 'said' | 'raid'; text: string }
+export type Activity = { seq: number; at: number; kind: 'prompt' | 'tool' | 'error' | 'done' | 'reply' | 'said' | 'raid' | 'subagent'; text: string }
 
 declare module 'claude-code' {
   interface PluginState {

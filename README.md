@@ -35,6 +35,13 @@ Restart Claude Code (or quit and reopen Claude Desktop), then:
 /chatfish live
 ```
 
+The marketplace is the only supported way to install chatfish. To update:
+
+```
+/plugin marketplace update walangstudio
+/plugin update chatfish@walangstudio
+```
+
 ## Commands
 
 | Command | What it does |
@@ -71,6 +78,7 @@ Settings stick across sessions.
 - Your prompts, every tool Claude runs (with the command or file), errors, and what Claude says at the
   end of a turn.
 - How long nothing has happened, and whether Claude is still thinking or just done.
+- Subagents: when Claude sends one out, what it is doing, and what it reports back.
 - Your replies, plus the last 15 to 30 lines of chat, so conversations keep going.
 
 Eight regulars show up every stream with their own personalities: async_annie explains things,
@@ -91,10 +99,12 @@ falls back to canned lines.
 
 ## Development
 
+For working on chatfish itself, not for installing it:
+
 ```
 claude plugin validate .
 claude plugin test .
-claude --plugin-dir .
+claude --plugin-dir .    # run this checkout for one session
 ```
 
 `hooks/register.tsx` is the mod itself, `hooks/chat.ts` holds the parsing and prompt logic, and

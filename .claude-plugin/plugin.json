@@ -1,7 +1,7 @@
 {
   "name": "chatfish",
   "displayName": "Chatfish",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A fake Twitch chat in a side pane that watches Claude work and talks back. Requires Claude Code 2.1.281 or later with CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1.",
   "author": {
     "name": "scr1p7k177y",

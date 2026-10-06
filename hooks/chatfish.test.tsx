@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { cannedChat, cannedLine, cannedName, endings, subject, templateCombos } from './canned'
 
-import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
+import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, streamOpening, systemPrompt, userPrompt } from './chat'
 
 const PANE = { component: 'Pane', requestId: 'chatfish', props: { title: 'Stream Chat', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} }, viewport: { columns: 40, rows: 200 } } as const
 const run = (args: string) => ({ command: 'chatfish', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } }) as const
@@ -214,7 +214,8 @@ test('canned subject only picks files from tool events', async () => {
   const ev = (kind: 'tool' | 'said' | 'error', text: string) => ({ seq: 1, at: 0, kind, text })
   expect(subject(ev('tool', 'Agent runs Edit: hooks/register.tsx'))).toBe('register.tsx')
   expect(subject(ev('tool', 'Agent runs Bash: npm test 2>&1'))).toBeUndefined()
-  expect(subject(ev('error', 'Bash failed: 3 tests failed in router.spec.ts'))).toBe('router.spec.ts')
+  expect(subject(ev('error', "Agent's Bash failed: 3 tests failed in router.spec.ts"))).toBe('router.spec.ts')
+  expect(subject(ev('error', "A subagent's Bash failed: 3 tests failed in router.spec.ts"))).toBe('router.spec.ts')
   expect(subject(ev('said', 'Claude said: "All tests pass."'))).toBeUndefined()
 })
 
@@ -361,7 +362,7 @@ test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', 
   const events = [
     undefined,
     { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: hooks/register.tsx' },
-    { seq: 2, at: 0, kind: 'error' as const, text: 'Bash failed: 3 tests failed in router.spec.ts' },
+    { seq: 2, at: 0, kind: 'error' as const, text: "Agent's Bash failed: 3 tests failed in router.spec.ts" },
     { seq: 3, at: 0, kind: 'done' as const, text: 'The agent finished its turn.' },
   ]
   const sample = (mode: 'hype' | 'wholesome' | 'roast') => Array.from({ length: 20_000 }, (_, i) => cannedLine(mode, events[i % events.length]))
@@ -374,4 +375,51 @@ test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', 
 test('about 60% of template lines end with nothing extra', async () => {
   const end = endings(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
   expect(end.filter(w => w === '').length / end.length).toBe(0.6)
+})
+
+test('stream openings vary, name the first speaker, and skip stock openers', async () => {
+  const openings = Array.from({ length: 2_000 }, () => streamOpening(Math.random))
+  expect(new Set(openings).size).toBeGreaterThan(1_800)
+  for (const o of openings) expect(o).toContain('no stock "first"')
+  const openers = new Set(openings.map(o => /first message comes from ([^,]+),/.exec(o)?.[1]))
+  expect(openers.size).toBeGreaterThan(12)
+  const base = { viewers: 3, trend: 'rising', uptimeMs: 10_000, idleMs: 0, isThinking: false, count: 1, activity: [], isNew: false, recent: [], replies: [] } as const
+  // One opening per stream: the same text every tick while the stream is young, gone afterwards.
+  expect(userPrompt({ ...base, opening: openings[0] })).toContain(openings[0]!)
+  expect(userPrompt({ ...base, uptimeMs: 600_000, opening: openings[0] })).not.toContain(openings[0]!)
+  expect(systemPrompt('chaos', 'nino')).not.toContain('"first"')
+})
+
+const spawnInput = {
+  tool_use_id: 'toolu_test', prompt: 'find the flaky test', description: 'Hunt the flaky test', subagentType: 'Explore',
+  provider: { plugin: 'engine', tier: 'core' }, parentModel: 'opus', background: false, fork: false,
+} as const
+
+test('chat hears about subagents that actually start, and only those', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const prompts: string[] = []
+  let refuse = false
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('agent.spawn', (_$, e) => (refuse ? { deny: 'no Explore here' } : e.description === 'Phantom errand' ? { model: 'haiku' } : { model: 'haiku', agentId: 'sub-1' }))
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+    return { value: { isAnswered: false, reason: 'empty-reply', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }
+  })
+  await $.command.run(run('live 1k'))
+  await clock.advance(130_000)
+  refuse = true
+  await $.agent.spawn({ ...spawnInput, description: 'A refused errand' })
+  refuse = false
+  await $.agent.spawn({ ...spawnInput, description: 'Phantom errand' })
+  await $.agent.spawn({ ...spawnInput, description: 'Side quest of a stranger', parentAgentId: 'not-followed' })
+  await $.agent.spawn(spawnInput)
+  await clock.advance(20_000)
+  expect(prompts.some(p => p.includes('Claude sent out a subagent (Explore) to: Hunt the flaky test'))).toBe(true)
+  expect(prompts.some(p => p.includes('A refused errand'))).toBe(false)
+  expect(prompts.some(p => p.includes('Phantom errand'))).toBe(false)
+  expect(prompts.some(p => p.includes('Side quest of a stranger'))).toBe(false)
+  await $.command.run(run('off'))
 })
