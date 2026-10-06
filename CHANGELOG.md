@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.1 - 2026-10-06
+
+- `/chatfish help` lists every command, setting, mode and rate.
+- Desktop: the "Send a message" box clears after you send, spans the pane, and the stray short divider
+  under the header is gone.
+- Saved settings: only the keys you change are written, a failed read never wipes what is stored, and a
+  hot reload no longer re-applies old values.
+- Replies always get an answer once anyone is watching; interrupted or failed turns no longer read as wins.
+
 ## v0.1.0 - 2026-10-06
 
 First release.

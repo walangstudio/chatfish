@@ -14,6 +14,8 @@ test('parses commands order-free with aliases', async () => {
   expect(parseArgs('reply  hi chat ')).toEqual({ kind: 'reply', text: 'hi chat' })
   expect(parseArgs('mode curious')).toEqual({ kind: 'set', patch: { mode: 'curious' } })
   expect(parseArgs('')).toEqual({ kind: 'status' })
+  expect(parseArgs('help')).toEqual({ kind: 'help' })
+  expect(parseArgs('--help')).toEqual({ kind: 'help' })
   expect(parseArgs('on banana').kind).toBe('error')
   expect(parseArgs('on 0').kind).toBe('error')
   expect(parseArgs('reply').kind).toBe('error')
@@ -309,4 +311,32 @@ test('a failed settings read never wipes what is stored', async ($, on) => {
   on('ui.toast', () => ({ value: undefined }))
   await $.command.run(run('config mode=wholesome'))
   expect(store.get('settings')).toEqual({ mode: 'wholesome', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' })
+})
+
+test('help lists every command and config key', async ($, on) => {
+  mock.store(on)
+  const help = await $.command.run(run('help'))
+  for (const word of ['live', 'off', 'reply', 'config', 'status', 'name', 'viewers', 'mode', 'rate', 'roast', 'frequent']) {
+    expect(help.text).toContain(word)
+  }
+})
+
+test('the pane input starts empty again after each message', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'empty-reply', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }))
+  await $.command.run(run('live'))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'chatfish', surface, ...PANE })
+    const before = await ui.find({ type: 'Input' })
+    await ui.input({ key: before!.key!, text: 'hello chat' })
+    const after = await ui.find({ type: 'Input' })
+    expect(after!.key).not.toBe(before!.key)
+    expect(await ui.find({ type: 'Text', text: /hello chat/ })).toBeDefined()
+    await ui.unmount()
+  }
+  await $.command.run(run('off'))
 })

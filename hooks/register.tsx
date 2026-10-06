@@ -3,7 +3,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Activity, Badge, ChatLine, Config } from '../types'
 import {
-  DEFAULT_CONFIG, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
+  DEFAULT_CONFIG, HELP, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
   nameColor, parseArgs, parseModelLines, systemPrompt, userPrompt,
 } from './chat'
 import type { Crowd, Parsed } from './chat'
@@ -17,6 +17,8 @@ const lines = atom({ plugin: 'chatfish', key: 'lines' } as const, [])
 const activity = atom({ plugin: 'chatfish', key: 'activity' } as const, [])
 const viewerCount = atom({ plugin: 'chatfish', key: 'viewers' } as const, 0)
 // In $.state, not the module, so a hot reload does not load saved settings over newer ones.
+// Bumped per message sent from the pane; it keys the input so each send starts empty.
+const sentCount = atom({ plugin: 'chatfish', key: 'sent' } as const, 0)
 const isSettingsLoaded = atom({ plugin: 'chatfish', key: 'isSettingsLoaded' } as const, false)
 
 // Twitch dark theme: surface #18181B, text #EFEFF1, muted #ADADB8, borders #2F2F35, brand purple #9146FF.
@@ -263,6 +265,8 @@ export const register: Register = on => {
     switch (cmd.kind) {
       case 'error':
         return { text: cmd.text }
+      case 'help':
+        return { text: HELP }
       case 'status':
         return { text: `chatfish is ${cfg.live ? 'LIVE' : 'offline'} (${describe(cfg)})\n${USAGE}` }
       case 'off':
@@ -356,6 +360,9 @@ export const register: Register = on => {
     const cfg = await read($, config)
     const all = await read($, lines)
     const watching = await read($, viewerCount)
+    const sent = await read($, sentCount)
+    // Desktop draws its own field chrome and a proportional font, so cell-based rules look broken there.
+    const isDesktop = e.surface === 'desktop'
     const mention = new RegExp(`@${escapeRe(streamerName(cfg))}(?![\\p{L}\\p{N}_])`, 'iu')
     const cols = Math.max(24, e.props.bodyColumns)
     const rows = Math.max(10, e.props.scroll.bodyRows || (e.viewport?.rows ?? 30))
@@ -415,19 +422,25 @@ export const register: Register = on => {
             <Text color={TW.muted}>{cfg.live ? formatViewers(watching) : '0'}</Text>
           </Text>
         </Box>
-        <Text color={TW.border}>{'─'.repeat(cols)}</Text>
+        {!isDesktop && <Text color={TW.border}>{'─'.repeat(cols)}</Text>}
         <Box flexDirection="column" flexGrow={1} justifyContent="flex-end" overflow="hidden" paddingX={1}>
           {cfg.live ? shown.map(row) : <Text color={TW.muted}>Stream is offline. /chatfish on</Text>}
         </Box>
         {cfg.live && 'Input' in els && (
-          <Box marginX={1} borderStyle="round" borderColor={TW.input}>
+          <Box
+            flexDirection="column"
+            {...(isDesktop ? { paddingX: 1, paddingY: 1 } : { marginX: 1, borderStyle: 'round' as const, borderColor: TW.input })}
+          >
             <els.Input
-              key="send"
+              key={`send-${sent}`}
               placeholder="Send a message"
               submitLabel="Chat"
+              {...(sent > 0 ? { autoFocus: true as const } : {})}
               onSubmit={async text => {
                 const now = await read($, config)
-                if (text.trim() && now.live) await say($, now, text.trim())
+                if (!text.trim() || !now.live) return
+                await say($, now, text.trim())
+                await update($, sentCount, n => n + 1)
               }}
             />
           </Box>
