@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { cannedChat, cannedLine, cannedName, subject } from './canned'
+import { cannedChat, cannedLine, cannedName, subject, templateCount } from './canned'
 
 import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
 
@@ -342,4 +342,12 @@ test('the pane input starts empty again after each message', async ($, on) => {
     await ui.unmount()
   }
   await $.command.run(run('off'))
+})
+
+test('offline chat has over a million distinct template lines and rarely repeats', async () => {
+  expect(templateCount).toBeGreaterThan(1_000_000)
+  const seen = new Set<string>()
+  for (let i = 0; i < 20_000; i++) seen.add(cannedLine('mixed', undefined))
+  expect(seen.size).toBeGreaterThan(14_000)
+  expect([...seen].some(l => /\s{2}|\s$|^\s/.test(l))).toBe(false)
 })

@@ -13,46 +13,102 @@ const EMOTES = [
 const LAUGH = ['KEKW', 'LUL', 'OMEGALUL', 'LMAO', 'lmaooo', 'XD', 'ICANT', 'HAHAHA', 'lol', 'dead']
 const HYPE = ['Pog', 'PogChamp', 'POGGERS', 'LETS GOOO', 'W', 'HUGE', 'clean', 'insane', 'GG', 'sheesh']
 const SAD = ['PepeHands', 'BibleThump', 'NotLikeThis', 'F', 'oof', 'pain', 'rip', 'monkaS', 'Sadge']
-const GREET = ['hi', 'hello', 'yo', 'hey', 'sup', 'hiii', 'heyo', 'good morning', 'gm', 'evening']
-const WHO = ['chat', 'everyone', 'streamer', 'gamers', 'nerds', 'friends', 'bestie', 'fam', 'lurkers', 'mods']
-const LANGS = ['rust', 'go', 'python', 'typescript', 'java', 'c++', 'zig', 'haskell', 'php', 'lua', 'elixir', 'kotlin']
+// Most real messages end with nothing, so the empty ending is listed several times on purpose.
+const TAIL = ['', '', '', '', '', '', '', '', '', ...EMOTES, ...LAUGH, ...HYPE, ...SAD, '!!', '??', 'lol', 'fr', 'ngl', 'tbh']
+const GREET = ['hi', 'hello', 'yo', 'hey', 'sup', 'hiii', 'heyo', 'good morning', 'gm', 'evening', 'howdy', 'hola', 'oi', 'wassup', 'heya']
+const WHO = [
+  'chat', 'everyone', 'streamer', 'gamers', 'nerds', 'friends', 'bestie', 'fam', 'lurkers', 'mods',
+  'devs', 'coders', 'night owls', 'regulars', 'new people', 'besties', 'legends', 'gremlins', 'goblins', 'team',
+]
+const LANGS = [
+  'rust', 'go', 'python', 'typescript', 'java', 'c++', 'zig', 'haskell', 'php', 'lua', 'elixir', 'kotlin',
+  'c#', 'ruby', 'swift', 'scala', 'ocaml', 'clojure', 'dart', 'bash',
+]
 const THINGS = [
   'the tests', 'the build', 'that regex', 'the types', 'the linter', 'prod', 'the database', 'the cache',
   'the CI', 'the docs', 'that function', 'the config', 'the API', 'the merge', 'the migration', 'the readme',
+  'that loop', 'the error handling', 'the variable names', 'the commit message', 'that if statement', 'the indentation',
+  'the PR', 'the stack trace', 'the logs', 'the deps', 'node_modules', 'the lockfile', 'the env vars', 'the dockerfile',
+  'the schema', 'the query', 'the retry logic', 'that one comment', 'the TODO list', 'the git history',
+  'the folder structure', 'the naming', 'that hotfix', 'the pipeline',
+]
+const OPEN = [
+  'ok but', 'ngl', 'honestly', 'lowkey', 'highkey', 'not gonna lie', 'bro', 'chat', 'wait', 'yo',
+  'hold on', 'real talk', 'actually', 'fr', 'tbh', 'imagine if', 'no way', 'bruh', 'dude', 'hmm',
+]
+const PRED = [
+  'is cooking', 'looks cursed', 'is goated', 'is held together by tape', 'is a crime', 'is beautiful',
+  'makes no sense', 'is lowkey genius', 'needs a rewrite', 'will break in prod', 'is giving 2009', 'is suspicious',
+  'passed somehow', 'is peak engineering', 'scares me', 'is actually clean', 'is pure chaos', 'deserves a raise',
+  'needs therapy', 'is why prod is down', 'is art', 'is spaghetti', 'is immaculate', 'hurts my eyes', 'sparks joy',
+  'is a vibe', 'is legacy already', 'is 90% vibes', 'is fine trust', 'just works somehow',
 ]
 const ADJ = [
   'cursed', 'clean', 'sus', 'beautiful', 'scary', 'spicy', 'mid', 'goated', 'ancient', 'chaotic',
-  'elegant', 'questionable', 'blessed', 'illegal', 'unhinged', 'cozy',
+  'elegant', 'questionable', 'blessed', 'illegal', 'unhinged', 'cozy', 'crunchy', 'feral', 'pristine', 'wild',
 ]
-const SNACK = ['ramen', 'coffee', 'tea', 'pizza', 'cereal', 'energy drink', 'toast', 'leftovers', 'dumplings', 'a sandwich']
-const TIMES = ['5 min', '2 hours', 'since the start', 'all week', 'since 2019', 'forever', 'a decade', '10 seconds']
+const SNACK = [
+  'ramen', 'coffee', 'tea', 'pizza', 'cereal', 'an energy drink', 'toast', 'leftovers', 'dumplings', 'a sandwich',
+  'popcorn', 'cold pizza', 'boba', 'instant noodles', 'chips', 'a burrito', 'sushi', 'pancakes', 'a salad', 'cookies',
+]
+const TIMES = ['5 min', '2 hours', 'the whole stream', 'all week', 'three years', 'forever', 'a decade', '10 seconds', 'an hour', 'all day', 'like 20 min', '3 streams']
+const PLACES = [
+  'brazil', 'germany', 'the philippines', 'canada', 'the uk', 'japan', 'india', 'mexico', 'france', 'poland',
+  'australia', 'korea', 'spain', 'italy', 'sweden', 'argentina', 'nigeria', 'vietnam', 'turkey', 'the netherlands',
+]
+const CHECKIN = ['greetings from', 'watching from', 'hello from', 'its 3am in', 'chilling in', 'up late in', 'lunch break in', 'raining in']
+const QSTART = ['why is', 'what is', 'who wrote', 'how does', 'wait why is', 'who approved', 'when did we change', 'is anyone else scared of']
+const QEND = ['?', '??', '? genuinely asking', '? asking for a friend', 'lol', '?!']
+const CMP = ['>', 'is better than', 'is just worse', 'could never beat', 'who still uses', 'vs']
+const BRB = ['brb getting', 'back with', 'just grabbed', 'ok making', 'having', 'got']
+const WATCH = ['watching', 'lurking', 'here', 'vibing', 'learning', 'procrastinating']
 
-const TEMPLATES: ((r: Rand) => string)[] = [
-  r => `${pick(GREET, r)} ${pick(WHO, r)}`,
-  r => `${pick(GREET, r)} ${pick(WHO, r)} ${pick(EMOTES, r)}`,
-  r => `${pick(LAUGH, r)} ${pick(LAUGH, r)}`,
-  r => `${pick(HYPE, r)} ${pick(HYPE, r)} ${pick(HYPE, r)}`,
-  r => Array.from({ length: 2 + Math.floor(r() * 4) }, () => pick(EMOTES, r)).join(' '),
-  r => `${pick(THINGS, r)} looking ${pick(ADJ, r)}`,
-  r => `${pick(THINGS, r)} is ${pick(ADJ, r)} ngl`,
-  r => `just rewrite it in ${pick(LANGS, r)}`,
-  r => `this would be 3 lines in ${pick(LANGS, r)}`,
-  r => `is this ${pick(LANGS, r)}?`,
-  r => `${pick(LANGS, r)} gang where you at`,
-  r => `${pick(LANGS, r)} > ${pick(LANGS, r)} fight me`,
-  r => `eating ${pick(SNACK, r)} watching this`,
-  r => `brb getting ${pick(SNACK, r)}`,
-  r => `back, did I miss ${pick(THINGS, r)}?`,
-  r => `been watching for ${pick(TIMES, r)} ${pick(EMOTES, r)}`,
-  r => `lurking for ${pick(TIMES, r)} first time chatting`,
-  r => `${pick(THINGS, r)} gonna break ${pick(SAD, r)}`,
-  r => `who touched ${pick(THINGS, r)} ${pick(LAUGH, r)}`,
-  r => `${pick(THINGS, r)}?? ${pick(EMOTES, r)}`,
-  r => `trust me ${pick(THINGS, r)} is fine Clueless`,
-  r => `${pick(ADJ, r)} stream today ${pick(EMOTES, r)}`,
-  r => `the vibes are ${pick(ADJ, r)}`,
-  r => `${pick(SAD, r)} my ${pick(THINGS, r).replace(/^the |^that /, '')} at work looks like this`,
+type Part = string | readonly string[]
+
+// Each template is a row of fixed text and word lists; one line picks one word from every list.
+const TEMPLATES: readonly (readonly Part[])[] = [
+  [OPEN, THINGS, PRED, TAIL],
+  [THINGS, PRED, TAIL],
+  [THINGS, 'looking', ADJ, TAIL],
+  [GREET, WHO, TAIL],
+  [CHECKIN, PLACES, TAIL],
+  [LANGS, CMP, LANGS, TAIL],
+  ['just rewrite it in', LANGS, TAIL],
+  ['this would be 3 lines in', LANGS, TAIL],
+  [BRB, SNACK, TAIL],
+  ['been', WATCH, 'for', TIMES, TAIL],
+  [QSTART, THINGS, QEND],
+  ['who touched', THINGS, TAIL],
+  [ADJ, 'stream today', TAIL],
+  ['the vibes are', ADJ, TAIL],
+  [EMOTES, EMOTES, EMOTES],
+  [LAUGH, LAUGH, TAIL],
+  [HYPE, HYPE, HYPE],
 ]
+
+const parts = (t: readonly Part[]) => t.filter((p): p is readonly string[] => typeof p !== 'string')
+
+const sizeOf = (t: readonly Part[]) => parts(t).reduce((m, words) => m * new Set(words).size, 1)
+
+// Distinct template lines possible: the sum over templates of their lists' sizes multiplied.
+export const templateCount = TEMPLATES.reduce((n, t) => n + sizeOf(t), 0)
+
+// Big templates are picked more often than small ones (by the square root of their size),
+// so a three-emote line does not come up as often as a full sentence.
+const WEIGHTS = TEMPLATES.map(t => Math.sqrt(sizeOf(t)))
+const TOTAL_WEIGHT = WEIGHTS.reduce((a, b) => a + b, 0)
+
+function pickTemplate(rand: Rand) {
+  let left = rand() * TOTAL_WEIGHT
+  for (let i = 0; i < TEMPLATES.length; i++) {
+    left -= WEIGHTS[i]!
+    if (left < 0) return TEMPLATES[i]!
+  }
+  return TEMPLATES[TEMPLATES.length - 1]!
+}
+
+const fill = (t: readonly Part[], r: Rand) =>
+  t.map(p => (typeof p === 'string' ? p : pick(p, r))).filter(Boolean).join(' ').replace(/ (\?|!|,)/g, '$1')
 
 const COMMON = [
   'first', 'second', 'is this live?', 'what are we building', 'what is he making', 'chat is this real',
@@ -174,12 +230,12 @@ const ABOUT: ((s: string, r: Rand) => string)[] = [
 export function cannedLine(mode: Mode, last: Activity | undefined, rand: Rand = Math.random) {
   const roll = rand()
   const about = subject(last)
-  if (about && roll < 0.15) return pick(ABOUT, rand)(about, rand)
+  if (about && roll < 0.08) return pick(ABOUT, rand)(about, rand)
   const react = last && REACT[last.kind]
-  if (react && roll < 0.35) return pick(react, rand)
-  if (roll < 0.55) return pick(BY_MODE[mode], rand)
-  if (roll < 0.75) return pick(COMMON, rand)
-  return pick(TEMPLATES, rand)(rand)
+  if (react && roll < 0.15) return pick(react, rand)
+  if (roll < 0.2) return pick(BY_MODE[mode], rand)
+  if (roll < 0.24) return pick(COMMON, rand)
+  return fill(pickTemplate(rand), rand)
 }
 
 // Lines and names shown lately, so the same thing does not come back a minute later.

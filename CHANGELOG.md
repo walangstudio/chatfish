@@ -3,6 +3,8 @@
 ## v0.1.1 - 2026-10-06
 
 - `/chatfish help` lists every command, setting, mode and rate.
+- Offline chat draws from about 1.3 million template lines (was a few thousand), weighted toward full
+  sentences, so it rarely repeats when Haiku is skipped or unavailable.
 - Desktop: the "Send a message" box clears after you send, spans the pane, and the stray short divider
   under the header is gone.
 - Saved settings: only the keys you change are written, a failed read never wipes what is stored, and a
