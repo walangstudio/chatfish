@@ -13,6 +13,10 @@ const EMOTES = [
 const LAUGH = ['KEKW', 'LUL', 'OMEGALUL', 'LMAO', 'lmaooo', 'XD', 'ICANT', 'HAHAHA', 'lol', 'dead']
 const HYPE = ['Pog', 'PogChamp', 'POGGERS', 'LETS GOOO', 'W', 'HUGE', 'insane', 'GG', 'sheesh']
 const SAD = ['PepeHands', 'BibleThump', 'NotLikeThis', 'F', 'oof', 'pain', 'rip', 'monkaS', 'Sadge']
+const NEUTRAL = [
+  'KEKW', 'LUL', 'Kappa', '5Head', 'Clueless', 'catJAM', 'o7', 'lol', 'fr', 'ngl', 'tbh', 'hmm', 'interesting',
+  'Copium', 'monkaS', 'OMEGALUL', 'true', 'real', 'facts', 'huh', 'wild', 'noted', 'sheesh', 'ok', 'bro',
+]
 const WARM = ['<3', 'catJAM', 'o7', 'Pog', 'love it', 'so wholesome', 'proud of you', 'nice']
 const GREET = ['hi', 'hello', 'yo', 'hey', 'sup', 'hiii', 'heyo', 'good morning', 'gm', 'evening', 'howdy', 'hola', 'oi', 'wassup', 'heya']
 const WHO = [
@@ -24,13 +28,12 @@ const LANGS = [
   'c#', 'ruby', 'swift', 'scala', 'ocaml', 'clojure', 'dart', 'bash',
 ]
 // Two different languages per line; "rust > rust" is not a take.
-const versus = (cmps: readonly string[]) =>
-  cmps.flatMap(cmp => LANGS.flatMap(a => LANGS.filter(b => b !== a).map(b => `${a} ${cmp} ${b}`)))
-const VERSUS_FRIENDLY = versus(['>', 'is better than', 'vs'])
-const VERSUS = versus(['>', 'is better than', 'is just worse than', 'could never beat', 'vs'])
+const VERSUS = ['>', 'is better than', 'is just worse than', 'could never beat', 'vs'].flatMap(cmp =>
+  LANGS.flatMap(a => LANGS.filter(b => b !== a).map(b => `${a} ${cmp} ${b}`)),
+)
 // Singular subjects only, so "is" and "looks" always agree.
 const THINGS = [
-  'the test suite', 'the build', 'that regex', 'the type system', 'the linter', 'prod', 'the database', 'the cache',
+  'the test suite', 'the build', 'that regex', 'the type system', 'the linter', 'the deploy', 'the database', 'the cache',
   'the CI', 'the documentation', 'that function', 'the config', 'the API', 'the merge', 'the migration', 'the readme',
   'that loop', 'the error handling', 'the naming', 'the commit message', 'that if statement', 'the indentation',
   'the PR', 'the stack trace', 'the log output', 'the dependency tree', 'node_modules', 'the lockfile', 'the env file',
@@ -84,11 +87,12 @@ const toneOf = (mode: Mode): Tone => (mode === 'hype' || mode === 'wholesome' ? 
 // The parts that carry a mood: what chat says about the code and how it signs off.
 function moodOf(mode: Mode) {
   const tone = toneOf(mode)
+  // Mixed modes pick praise or shade per line, so they sign off with something that fits either.
   const end =
     mode === 'hype' ? HYPE
     : mode === 'wholesome' ? WARM
     : mode === 'roast' ? [...LAUGH, ...SAD]
-    : [...EMOTES, ...LAUGH, ...HYPE, ...SAD]
+    : NEUTRAL
   return {
     tone,
     verdict: tone === 'nice' ? PRAISE : tone === 'mean' ? SHADE : [...PRAISE, ...SHADE],
@@ -107,14 +111,15 @@ function templatesFor(mode: Mode): readonly (readonly Part[])[] {
     [THINGS, 'looking', adj, end],
     [GREET, WHO, end],
     [CHECKIN, PLACES, end],
-    [nice ? VERSUS_FRIENDLY : VERSUS, end],
-    ['this would be 3 lines in', LANGS, end],
     [BRB, SNACK, end],
     ['been', WATCH, 'for', TIMES, end],
     [nice ? QSTART_CURIOUS : QSTART, THINGS, QEND],
     [adj, 'stream today', end],
     ['the vibes are', adj, end],
-    ...(nice ? [] : [['just rewrite it in', LANGS, end], ['who touched', THINGS, end]] as const),
+    // Language fights and digs at the code are for modes that are allowed to be rude.
+    ...(nice
+      ? []
+      : ([[VERSUS, end], ['this would be 3 lines in', LANGS, end], ['just rewrite it in', LANGS, end], ['who touched', THINGS, end]] as const)),
   ]
 }
 
@@ -215,6 +220,7 @@ const REACT: Partial<Record<Activity['kind'], readonly string[]>> = {
     'KEKW error', 'F', 'PepeHands', 'thats red chat', 'monkaS it broke', 'NotLikeThis', 'red text arc',
     'error any%', 'its fine its fine', 'who could have seen this coming', 'skill issue', 'read the error',
     'have you tried turning it off and on', 'F in chat', 'the stack trace is longer than the code',
+    'you got this', 'happens to the best of us', 'debug time', 'easy fix probably',
   ],
   done: [
     'GG', 'GGs', 'did it work??', 'ship it', 'o7', 'W', 'merge it', 'deploy on friday', 'clean', 'next',
@@ -225,6 +231,21 @@ const REACT: Partial<Record<Activity['kind'], readonly string[]>> = {
   prompt: ['new task Pog', 'oh this should be fun', 'here we go again', 'good luck', 'that sounds hard', 'easy'],
   raid: ['RAID', 'welcome raiders', 'hi raiders <3', 'RAID HYPE', 'welcome in', 'raiders say hi'],
 }
+
+// Shared lines that only fit one side: nice modes never mock, roast never gushes.
+const SPICY = new Set([
+  'L', 'ratio', 'cringe', 'mid', 'light mode users KEKW', 'ban him', 'who let him code', 'touch grass',
+  'KEKW error', 'skill issue', 'read the error', 'who could have seen this coming', 'error any%', 'red text arc',
+  'have you tried turning it off and on', 'the stack trace is longer than the code', 'ok but why',
+])
+const SWEET = new Set([
+  'love the setup', 'certified banger', 'actual wizard', 'peak content', 'smoothest stream', 'cozy stream',
+  'calm stream today', 'that was smooth', 'its giving senior dev', 'okay that was impressive', 'he did it',
+  'let him cook', 'trust the process', 'he cooking', 'cooking', 'you got this', 'happens to the best of us',
+  'easy fix probably',
+])
+const forTone = (lines: readonly string[], tone: Tone) =>
+  tone === 'any' ? lines : lines.filter(l => !(tone === 'nice' ? SPICY : SWEET).has(l))
 
 // Handles: prefix + suffix, sometimes with digits. 70 x 40 shapes before numbers.
 const NAME_A = [
@@ -259,7 +280,7 @@ export function subject(a: Activity | undefined) {
 }
 
 // Lines about the file the agent is touching, sorted by tone so each mode keeps its mood.
-const ABOUT: Record<Tone, readonly ((s: string, r: Rand) => string)[]> = {
+const ABOUT: Record<'nice' | 'mean', readonly ((s: string, r: Rand) => string)[]> = {
   nice: [
     s => `what is ${s}`,
     s => `oh we're in ${s} now`,
@@ -273,20 +294,20 @@ const ABOUT: Record<Tone, readonly ((s: string, r: Rand) => string)[]> = {
     (s, r) => `${s} is ${pick(MEAN_ADJ, r)}`,
     s => `i was scared of ${s} too`,
   ],
-  any: [],
 }
-const aboutFor = (tone: Tone) => (tone === 'any' ? [...ABOUT.nice, ...ABOUT.mean] : ABOUT[tone])
+const ABOUT_ANY = [...ABOUT.nice, ...ABOUT.mean]
 
 export function cannedLine(mode: Mode, last: Activity | undefined, rand: Rand = Math.random) {
+  const tone = toneOf(mode)
   const roll = rand()
   const about = subject(last)
-  if (about && roll < 0.08) return pick(aboutFor(toneOf(mode)), rand)(about, rand)
+  if (about && roll < 0.08) return pick(tone === 'any' ? ABOUT_ANY : ABOUT[tone], rand)(about, rand)
   const react = last && REACT[last.kind]
-  if (react && roll < 0.2) return pick(react, rand)
+  if (react && roll < 0.2) return pick(forTone(react, tone), rand)
   // Mode lines get a fixed share whatever just happened, so the mode always shows.
   const flavour = rand()
   if (flavour < 0.2) return pick(BY_MODE[mode], rand)
-  if (flavour < 0.26) return pick(COMMON, rand)
+  if (flavour < 0.26) return pick(forTone(COMMON, tone), rand)
   return fill(pickTemplate(mode, rand), rand)
 }
 

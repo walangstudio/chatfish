@@ -3,7 +3,7 @@
 ## v0.1.1 - 2026-10-06
 
 - `/chatfish help` lists every command, setting, mode and rate.
-- Offline chat draws from 210,000 to 1.7 million template combinations depending on mode (was a few
+- Offline chat draws from 200,000 to 1.2 million template combinations depending on mode (was a few
   thousand lines), keeps the mode's mood, and rarely repeats when Haiku is skipped or unavailable.
 - Desktop: the "Send a message" box clears after you send, spans the pane, and the stray short divider
   under the header is gone.

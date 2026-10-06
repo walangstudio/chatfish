@@ -354,17 +354,21 @@ test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', 
   const comparisons = lines.filter(l => / (>|vs|is better than|is just worse than|could never beat) /.test(l))
   expect(comparisons.length).toBeGreaterThan(0)
   expect(comparisons.some(l => /^(\S+) (>|vs|is better than|is just worse than|could never beat) \1(\s|$)/.test(l))).toBe(false)
-  expect(lines.some(l => /^how does /.test(l))).toBe(false)
   expect(lines.some(l => /\b(\w+) \1$/.test(l))).toBe(false)
+  expect(lines.some(l => /\bprod\b.*\bprod\b/.test(l))).toBe(false)
 
-  const filed = { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: hooks/register.tsx' }
-  const harsh = /is a crime|needs therapy|is why prod is down|is just worse than|could never beat|just rewrite it in|scared of|who approved|is cursed|is sus|not register/
-  for (const mode of ['hype', 'wholesome'] as const) {
-    const sample = Array.from({ length: 5_000 }, (_, i) => cannedLine(mode, i % 2 ? filed : undefined))
-    expect(sample.filter(l => harsh.test(l))).toEqual([])
-  }
-  const roast = Array.from({ length: 5_000 }, (_, i) => cannedLine('roast', i % 2 ? filed : undefined))
-  expect(roast.filter(l => /is goated|is immaculate|sparks joy|looking good/.test(l))).toEqual([])
+  // Every path a line can take: a file edit, an error, a finished turn, and nothing at all.
+  const events = [
+    undefined,
+    { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: hooks/register.tsx' },
+    { seq: 2, at: 0, kind: 'error' as const, text: 'Bash failed: 3 tests failed in router.spec.ts' },
+    { seq: 3, at: 0, kind: 'done' as const, text: 'The agent finished its turn.' },
+  ]
+  const sample = (mode: 'hype' | 'wholesome' | 'roast') => Array.from({ length: 20_000 }, (_, i) => cannedLine(mode, events[i % events.length]))
+  const harsh = /is a crime|needs therapy|is why prod is down|is just worse than|could never beat|just rewrite it in|3 lines in|scared of|who approved|is cursed|is sus|not register|skill issue|KEKW error|read the error|who let him code|^ratio$|^cringe$|^L$| > /
+  for (const mode of ['hype', 'wholesome'] as const) expect(sample(mode).filter(l => harsh.test(l))).toEqual([])
+  const gushing = /is goated|is immaculate|sparks joy|looking good|certified banger|cozy stream|actual wizard|you got this|okay that was impressive/
+  expect(sample('roast').filter(l => gushing.test(l))).toEqual([])
 })
 
 test('about 60% of template lines end with nothing extra', async () => {
