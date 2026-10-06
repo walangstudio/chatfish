@@ -45,6 +45,7 @@ Restart Claude Code (or quit and reopen Claude Desktop), then:
 | `/chatfish reply <message>` | Say something in chat. Works while Claude is busy. `@name` someone to get them to answer. |
 | `/chatfish config <key=value ...>` | Change settings, live or not. See below. |
 | `/chatfish` | Show the current settings. Also `status`. |
+| `/chatfish help` | List every command, setting, mode and rate. |
 
 You can also type straight into the "Send a message" box at the bottom of the pane.
 

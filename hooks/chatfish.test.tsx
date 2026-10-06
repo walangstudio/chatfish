@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { cannedChat, cannedLine, cannedName, subject } from './canned'
+import { cannedChat, cannedLine, cannedName, endings, subject, templateCombos } from './canned'
 
 import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
 
@@ -14,6 +14,9 @@ test('parses commands order-free with aliases', async () => {
   expect(parseArgs('reply  hi chat ')).toEqual({ kind: 'reply', text: 'hi chat' })
   expect(parseArgs('mode curious')).toEqual({ kind: 'set', patch: { mode: 'curious' } })
   expect(parseArgs('')).toEqual({ kind: 'status' })
+  expect(parseArgs('help')).toEqual({ kind: 'help' })
+  expect(parseArgs('--help')).toEqual({ kind: 'help' })
+  expect(parseArgs('help config')).toEqual({ kind: 'help' })
   expect(parseArgs('on banana').kind).toBe('error')
   expect(parseArgs('on 0').kind).toBe('error')
   expect(parseArgs('reply').kind).toBe('error')
@@ -309,4 +312,66 @@ test('a failed settings read never wipes what is stored', async ($, on) => {
   on('ui.toast', () => ({ value: undefined }))
   await $.command.run(run('config mode=wholesome'))
   expect(store.get('settings')).toEqual({ mode: 'wholesome', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' })
+})
+
+test('help lists every command and config key', async ($, on) => {
+  mock.store(on)
+  const help = await $.command.run(run('help'))
+  for (const word of ['live', 'off', 'reply', 'config', 'status', 'name', 'viewers', 'mode', 'rate', 'roast', 'frequent']) {
+    expect(help.text).toContain(word)
+  }
+})
+
+test('the pane input starts empty again after each message', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'empty-reply', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }))
+  await $.command.run(run('live'))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'chatfish', surface, ...PANE })
+    const before = await ui.find({ type: 'Input' })
+    await ui.input({ key: before!.key!, text: 'hello chat' })
+    const after = await ui.find({ type: 'Input' })
+    expect(after!.key).not.toBe(before!.key)
+    expect(after!.props.value).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /hello chat/ })).toBeDefined()
+    await ui.unmount()
+  }
+  await $.command.run(run('off'))
+})
+
+test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', async () => {
+  expect(templateCombos('mixed')).toBeGreaterThan(1_000_000)
+  for (const mode of ['hype', 'roast', 'wholesome', 'curious', 'chaos'] as const) expect(templateCombos(mode)).toBeGreaterThan(100_000)
+  const seen = new Set<string>()
+  for (let i = 0; i < 20_000; i++) seen.add(cannedLine('mixed', undefined))
+  expect(seen.size).toBeGreaterThan(12_000)
+  const lines = [...seen]
+  expect(lines.some(l => /\s{2}|\s$|^\s/.test(l))).toBe(false)
+  const comparisons = lines.filter(l => / (>|vs|is better than|is just worse than|could never beat) /.test(l))
+  expect(comparisons.length).toBeGreaterThan(0)
+  expect(comparisons.some(l => /^(\S+) (>|vs|is better than|is just worse than|could never beat) \1(\s|$)/.test(l))).toBe(false)
+  expect(lines.some(l => /\b(\w+) \1$/.test(l))).toBe(false)
+  expect(lines.some(l => /\bprod\b.*\bprod\b/.test(l))).toBe(false)
+
+  // Every path a line can take: a file edit, an error, a finished turn, and nothing at all.
+  const events = [
+    undefined,
+    { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: hooks/register.tsx' },
+    { seq: 2, at: 0, kind: 'error' as const, text: 'Bash failed: 3 tests failed in router.spec.ts' },
+    { seq: 3, at: 0, kind: 'done' as const, text: 'The agent finished its turn.' },
+  ]
+  const sample = (mode: 'hype' | 'wholesome' | 'roast') => Array.from({ length: 20_000 }, (_, i) => cannedLine(mode, events[i % events.length]))
+  const harsh = /is a crime|needs therapy|is why prod is down|is just worse than|could never beat|just rewrite it in|3 lines in|scared of|who approved|is cursed|is sus|not register|skill issue|KEKW error|read the error|who let him code|^ratio$|^cringe$|^L$| > /
+  for (const mode of ['hype', 'wholesome'] as const) expect(sample(mode).filter(l => harsh.test(l))).toEqual([])
+  const gushing = /is goated|is immaculate|sparks joy|looking good|certified banger|cozy stream|actual wizard|you got this|okay that was impressive/
+  expect(sample('roast').filter(l => gushing.test(l))).toEqual([])
+})
+
+test('about 60% of template lines end with nothing extra', async () => {
+  const end = endings(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
+  expect(end.filter(w => w === '').length / end.length).toBe(0.6)
 })

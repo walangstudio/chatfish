@@ -26,11 +26,12 @@ export type Command =
   | { kind: 'set'; patch: Partial<Config> }
   | { kind: 'reply'; text: string }
   | { kind: 'status' }
+  | { kind: 'help' }
   | { kind: 'config'; patch: Partial<Config> }
   | { kind: 'error'; text: string }
 
 export const USAGE =
-  'Usage: /chatfish <on|start|live|off|stop|offline> [mode] [viewers] [rate]  |  /chatfish reply <message>  |  /chatfish <mode|rate|viewers>\n' +
+  'Run /chatfish help for every option.\nUsage: /chatfish <on|start|live|off|stop|offline> [mode] [viewers] [rate]  |  /chatfish reply <message>  |  /chatfish <mode|rate|viewers>\n' +
   `modes: ${MODES.join(', ')}  rates: ${RATES.join(', ')}  viewers: 1-1000000\n` +
   'Live settings: /chatfish config name=<nickname|auto> viewers=5k mode=roast rate=frequent  (key: value, comma separated, works too)'
 
@@ -95,9 +96,30 @@ export function fromSaved(v: unknown): Partial<Saved> {
   return out
 }
 
+export const HELP = [
+  'chatfish - a fake Twitch chat that watches Claude work.',
+  '',
+  '/chatfish live [mode] [viewers] [rate]   go live (also on, start); options in any order',
+  '/chatfish off                            end the stream (also stop, offline)',
+  '/chatfish reply <message>                talk to chat (also say); @name someone to get them to answer',
+  '/chatfish <mode|viewers|rate>            change a setting directly, e.g. /chatfish roast 5k',
+  '/chatfish config key=value ...           change settings, live or not; they stick across sessions',
+  '/chatfish status                         show the current settings (also bare /chatfish)',
+  '/chatfish help                           this help',
+  '',
+  'config keys:',
+  '  name     what chat calls you (nick, nickname, streamer); auto = your Claude name',
+  '  viewers  target audience, 1-1000000 (audience); 5k works',
+  `  mode     ${MODES.join(', ')}`,
+  `  rate     ${RATES.join(', ')} (chat); less, moderate, spam work too`,
+  '',
+  'Example: /chatfish config name=CodeCat viewers=5k mode=roast rate=frequent',
+].join('\n')
+
 export function parseArgs(args: string): Command {
   const trimmed = args.trim()
   if (trimmed === '' || trimmed.toLowerCase() === 'status') return { kind: 'status' }
+  if (/^(help|-h|--help|\?)(\s|$)/i.test(trimmed)) return { kind: 'help' }
   const [head = '', ...rest] = trimmed.split(/\s+/)
   const verb = head.toLowerCase()
   if (verb === 'reply' || verb === 'say') {

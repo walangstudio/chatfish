@@ -13,6 +13,6 @@ export type Activity = { seq: number; at: number; kind: 'prompt' | 'tool' | 'err
 
 declare module 'claude-code' {
   interface PluginState {
-    chatfish: { config: Config; lines: ChatLine[]; activity: Activity[]; viewers: number; isSettingsLoaded: boolean }
+    chatfish: { config: Config; lines: ChatLine[]; activity: Activity[]; viewers: number; isSettingsLoaded: boolean; sent: number }
   }
 }
