@@ -437,7 +437,10 @@ export const register: Register = on => {
               placeholder="Send a message"
               submitLabel="Chat"
               onSubmit={async text => {
-                // Swap in the empty field before anything slow, then hand the keyboard to it.
+                // Swap in the empty field before anything slow, then hand the keyboard to it. A refused
+                // move resolves { deny } and leaves focus to the person; keys typed in the instant before
+                // the swap, or a draft in the same pane on another surface, go with the old field.
+                // ponytail: one shared counter; per-surface counters if both surfaces are used at once.
                 const n = await update($, sentCount, c => c + 1)
                 void $.ui.focus({ requestId: PANE, key: `send-${n}` }).catch(() => {})
                 const message = text.trim()

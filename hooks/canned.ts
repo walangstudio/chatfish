@@ -11,9 +11,9 @@ const EMOTES = [
   '5Head', 'Clueless', 'Copium', 'o7', '<3', 'BibleThump', 'ResidentSleeper', 'NotLikeThis', 'Kreygasm',
 ]
 const LAUGH = ['KEKW', 'LUL', 'OMEGALUL', 'LMAO', 'lmaooo', 'XD', 'ICANT', 'HAHAHA', 'lol', 'dead']
-const HYPE = ['Pog', 'PogChamp', 'POGGERS', 'LETS GOOO', 'W', 'HUGE', 'clean', 'insane', 'GG', 'sheesh']
+const HYPE = ['Pog', 'PogChamp', 'POGGERS', 'LETS GOOO', 'W', 'HUGE', 'insane', 'GG', 'sheesh']
 const SAD = ['PepeHands', 'BibleThump', 'NotLikeThis', 'F', 'oof', 'pain', 'rip', 'monkaS', 'Sadge']
-const WARM = ['<3', 'catJAM', 'o7', 'Pog', 'love it', 'so cozy', 'proud of you', 'nice']
+const WARM = ['<3', 'catJAM', 'o7', 'Pog', 'love it', 'so wholesome', 'proud of you', 'nice']
 const GREET = ['hi', 'hello', 'yo', 'hey', 'sup', 'hiii', 'heyo', 'good morning', 'gm', 'evening', 'howdy', 'hola', 'oi', 'wassup', 'heya']
 const WHO = [
   'chat', 'everyone', 'streamer', 'gamers', 'nerds', 'friends', 'bestie', 'fam', 'lurkers', 'mods',
@@ -24,9 +24,10 @@ const LANGS = [
   'c#', 'ruby', 'swift', 'scala', 'ocaml', 'clojure', 'dart', 'bash',
 ]
 // Two different languages per line; "rust > rust" is not a take.
-const VERSUS = ['>', 'is better than', 'is just worse than', 'could never beat', 'vs'].flatMap(cmp =>
-  LANGS.flatMap(a => LANGS.filter(b => b !== a).map(b => `${a} ${cmp} ${b}`)),
-)
+const versus = (cmps: readonly string[]) =>
+  cmps.flatMap(cmp => LANGS.flatMap(a => LANGS.filter(b => b !== a).map(b => `${a} ${cmp} ${b}`)))
+const VERSUS_FRIENDLY = versus(['>', 'is better than', 'vs'])
+const VERSUS = versus(['>', 'is better than', 'is just worse than', 'could never beat', 'vs'])
 // Singular subjects only, so "is" and "looks" always agree.
 const THINGS = [
   'the test suite', 'the build', 'that regex', 'the type system', 'the linter', 'prod', 'the database', 'the cache',
@@ -65,7 +66,8 @@ const PLACES = [
   'australia', 'korea', 'spain', 'italy', 'sweden', 'argentina', 'nigeria', 'vietnam', 'turkey', 'the netherlands',
 ]
 const CHECKIN = ['greetings from', 'watching from', 'hello from', 'its 3am in', 'chilling in', 'up late in', 'lunch break in', 'raining in']
-const QSTART = ['why is', 'what is', 'who wrote', 'wait why is', 'who approved', 'when did we change', 'is anyone else scared of']
+const QSTART_CURIOUS = ['what is', 'who wrote', 'when did we change', 'can someone explain']
+const QSTART = [...QSTART_CURIOUS, 'why is', 'wait why is', 'who approved', 'is anyone else scared of']
 const QEND = ['?', '??', '? genuinely asking', '? asking for a friend', 'lol', '?!']
 const BRB = ['brb getting', 'back with', 'just grabbed', 'ok making', 'having', 'got']
 const WATCH = ['watching', 'lurking', 'here', 'vibing', 'learning', 'procrastinating']
@@ -73,55 +75,71 @@ const WATCH = ['watching', 'lurking', 'here', 'vibing', 'learning', 'procrastina
 type Part = string | readonly string[]
 
 // About 60% of real messages end with nothing; the rest end with a word or emote that fits the mood.
-const endings = (words: readonly string[]) => [...Array<string>(Math.round(words.length * 1.5)).fill(''), ...words]
+export const endings = (words: readonly string[]) => [...Array<string>(Math.round(words.length * 1.5)).fill(''), ...words]
+
+// How a mode feels about the code: hype and wholesome only praise, roast only shades, the rest mix.
+type Tone = 'nice' | 'mean' | 'any'
+const toneOf = (mode: Mode): Tone => (mode === 'hype' || mode === 'wholesome' ? 'nice' : mode === 'roast' ? 'mean' : 'any')
 
 // The parts that carry a mood: what chat says about the code and how it signs off.
 function moodOf(mode: Mode) {
-  if (mode === 'hype') return { verdict: PRAISE, adj: NICE_ADJ, end: endings(HYPE) }
-  if (mode === 'wholesome') return { verdict: PRAISE, adj: NICE_ADJ, end: endings(WARM) }
-  if (mode === 'roast') return { verdict: SHADE, adj: MEAN_ADJ, end: endings([...LAUGH, ...SAD]) }
-  return { verdict: [...PRAISE, ...SHADE], adj: [...NICE_ADJ, ...MEAN_ADJ], end: endings([...EMOTES, ...LAUGH, ...HYPE, ...SAD]) }
+  const tone = toneOf(mode)
+  const end =
+    mode === 'hype' ? HYPE
+    : mode === 'wholesome' ? WARM
+    : mode === 'roast' ? [...LAUGH, ...SAD]
+    : [...EMOTES, ...LAUGH, ...HYPE, ...SAD]
+  return {
+    tone,
+    verdict: tone === 'nice' ? PRAISE : tone === 'mean' ? SHADE : [...PRAISE, ...SHADE],
+    adj: tone === 'nice' ? NICE_ADJ : tone === 'mean' ? MEAN_ADJ : ADJ,
+    end: endings(end),
+  }
 }
 
 // Each template is a row of fixed text and word lists; one line picks one word from every list.
 function templatesFor(mode: Mode): readonly (readonly Part[])[] {
-  const { verdict, adj, end } = moodOf(mode)
+  const { tone, verdict, adj, end } = moodOf(mode)
+  const nice = tone === 'nice'
   return [
     [OPEN, THINGS, verdict, end],
     [THINGS, verdict, end],
     [THINGS, 'looking', adj, end],
     [GREET, WHO, end],
     [CHECKIN, PLACES, end],
-    [VERSUS, end],
-    ['just rewrite it in', LANGS, end],
+    [nice ? VERSUS_FRIENDLY : VERSUS, end],
     ['this would be 3 lines in', LANGS, end],
     [BRB, SNACK, end],
     ['been', WATCH, 'for', TIMES, end],
-    [QSTART, THINGS, QEND],
-    ['who touched', THINGS, end],
+    [nice ? QSTART_CURIOUS : QSTART, THINGS, QEND],
     [adj, 'stream today', end],
     ['the vibes are', adj, end],
+    ...(nice ? [] : [['just rewrite it in', LANGS, end], ['who touched', THINGS, end]] as const),
   ]
 }
 
 const sizeOf = (t: readonly Part[]) =>
   t.reduce((m, p) => (typeof p === 'string' ? m : m * new Set(p).size), 1)
 
-// Template combinations available in a mode: the sum over templates of their lists' distinct sizes multiplied.
-export const templateCombos = (mode: Mode) => templatesFor(mode).reduce((n, t) => n + sizeOf(t), 0)
+type Table = { templates: readonly (readonly Part[])[]; weights: number[]; total: number }
 
-// Per mode, big templates are picked more often than small ones (by the square root of their size),
+// Built on first use per mode, so any mode the type allows gets a table.
+// Big templates are picked more often than small ones (by the square root of their size),
 // so a greeting does not come up as often as a full sentence about the code.
-const BY_MODE_TEMPLATES = Object.fromEntries(
-  (['hype', 'roast', 'mixed', 'curious', 'wholesome', 'chaos'] as const).map(mode => {
+const tables: Partial<Record<Mode, Table>> = {}
+function tableFor(mode: Mode): Table {
+  return (tables[mode] ??= (() => {
     const templates = templatesFor(mode)
     const weights = templates.map(t => Math.sqrt(sizeOf(t)))
-    return [mode, { templates, weights, total: weights.reduce((a, b) => a + b, 0) }]
-  }),
-) as Record<Mode, { templates: readonly (readonly Part[])[]; weights: number[]; total: number }>
+    return { templates, weights, total: weights.reduce((a, b) => a + b, 0) }
+  })())
+}
+
+// Template combinations available in a mode: the sum over templates of their lists' distinct sizes multiplied.
+export const templateCombos = (mode: Mode) => tableFor(mode).templates.reduce((n, t) => n + sizeOf(t), 0)
 
 function pickTemplate(mode: Mode, rand: Rand) {
-  const { templates, weights, total } = BY_MODE_TEMPLATES[mode]
+  const { templates, weights, total } = tableFor(mode)
   let left = rand() * total
   for (let i = 0; i < templates.length; i++) {
     left -= weights[i]!
@@ -131,7 +149,7 @@ function pickTemplate(mode: Mode, rand: Rand) {
 }
 
 const fill = (t: readonly Part[], r: Rand) =>
-  t.map(p => (typeof p === 'string' ? p : pick(p, r))).filter(Boolean).join(' ').replace(/ (\?|!)/g, '$1')
+  t.map(p => (typeof p === 'string' ? p : pick(p, r))).filter(Boolean).join(' ').replace(/ \?/g, '?')
 
 const COMMON = [
   'first', 'second', 'is this live?', 'what are we building', 'what is he making', 'chat is this real',
@@ -240,20 +258,29 @@ export function subject(a: Activity | undefined) {
   return file && /\w\.\w/.test(file) ? file.slice(0, 40) : undefined
 }
 
-const ABOUT: ((s: string, r: Rand) => string)[] = [
-  (s, r) => `${s} again ${pick(LAUGH, r)}`,
-  (s, r) => `not ${s} ${pick(SAD, r)}`,
-  s => `what is ${s}`,
-  (s, r) => `${s} is ${pick(ADJ, r)}`,
-  (s, r) => `${s} ${pick(EMOTES, r)}`,
-  s => `oh we're in ${s} now`,
-  s => `i was scared of ${s} too`,
-]
+// Lines about the file the agent is touching, sorted by tone so each mode keeps its mood.
+const ABOUT: Record<Tone, readonly ((s: string, r: Rand) => string)[]> = {
+  nice: [
+    s => `what is ${s}`,
+    s => `oh we're in ${s} now`,
+    (s, r) => `${s} is ${pick(NICE_ADJ, r)}`,
+    (s, r) => `${s} ${pick(HYPE, r)}`,
+    s => `${s} looking good`,
+  ],
+  mean: [
+    (s, r) => `${s} again ${pick(LAUGH, r)}`,
+    (s, r) => `not ${s} ${pick(SAD, r)}`,
+    (s, r) => `${s} is ${pick(MEAN_ADJ, r)}`,
+    s => `i was scared of ${s} too`,
+  ],
+  any: [],
+}
+const aboutFor = (tone: Tone) => (tone === 'any' ? [...ABOUT.nice, ...ABOUT.mean] : ABOUT[tone])
 
 export function cannedLine(mode: Mode, last: Activity | undefined, rand: Rand = Math.random) {
   const roll = rand()
   const about = subject(last)
-  if (about && roll < 0.08) return pick(ABOUT, rand)(about, rand)
+  if (about && roll < 0.08) return pick(aboutFor(toneOf(mode)), rand)(about, rand)
   const react = last && REACT[last.kind]
   if (react && roll < 0.2) return pick(react, rand)
   // Mode lines get a fixed share whatever just happened, so the mode always shows.

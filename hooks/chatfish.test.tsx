@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { cannedChat, cannedLine, cannedName, subject, templateCombos } from './canned'
+import { cannedChat, cannedLine, cannedName, endings, subject, templateCombos } from './canned'
 
 import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
 
@@ -351,12 +351,23 @@ test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', 
   expect(seen.size).toBeGreaterThan(12_000)
   const lines = [...seen]
   expect(lines.some(l => /\s{2}|\s$|^\s/.test(l))).toBe(false)
-  expect(lines.some(l => /(\w+) (>|vs|is better than|is just worse than|could never beat) /.test(l))).toBe(false)
+  const comparisons = lines.filter(l => / (>|vs|is better than|is just worse than|could never beat) /.test(l))
+  expect(comparisons.length).toBeGreaterThan(0)
+  expect(comparisons.some(l => /^(\S+) (>|vs|is better than|is just worse than|could never beat) \1(\s|$)/.test(l))).toBe(false)
   expect(lines.some(l => /^how does /.test(l))).toBe(false)
-  const roast = Array.from({ length: 5_000 }, () => cannedLine('roast', undefined))
-  expect(roast.some(l => /is goated|is immaculate|sparks joy/.test(l))).toBe(false)
-  const wholesome = Array.from({ length: 5_000 }, () => cannedLine('wholesome', undefined))
-  expect(wholesome.some(l => /is a crime|needs therapy|is why prod is down/.test(l))).toBe(false)
-  const bare = lines.filter(l => !/(KEKW|LUL|OMEGALUL|Pog|PogChamp|POGGERS|Kappa|monkaS|PepeHands|catJAM|5Head|Clueless|Copium|LMAO|XD|ICANT|F|oof|rip|Sadge|W|GG|HUGE|sheesh)$/.test(l))
-  expect(bare.length / lines.length).toBeGreaterThan(0.4)
+  expect(lines.some(l => /\b(\w+) \1$/.test(l))).toBe(false)
+
+  const filed = { seq: 1, at: 0, kind: 'tool' as const, text: 'Agent runs Edit: hooks/register.tsx' }
+  const harsh = /is a crime|needs therapy|is why prod is down|is just worse than|could never beat|just rewrite it in|scared of|who approved|is cursed|is sus|not register/
+  for (const mode of ['hype', 'wholesome'] as const) {
+    const sample = Array.from({ length: 5_000 }, (_, i) => cannedLine(mode, i % 2 ? filed : undefined))
+    expect(sample.filter(l => harsh.test(l))).toEqual([])
+  }
+  const roast = Array.from({ length: 5_000 }, (_, i) => cannedLine('roast', i % 2 ? filed : undefined))
+  expect(roast.filter(l => /is goated|is immaculate|sparks joy|looking good/.test(l))).toEqual([])
+})
+
+test('about 60% of template lines end with nothing extra', async () => {
+  const end = endings(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
+  expect(end.filter(w => w === '').length / end.length).toBe(0.6)
 })

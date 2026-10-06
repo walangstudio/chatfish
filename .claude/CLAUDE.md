@@ -43,3 +43,5 @@ Commands and hooks write activity into `$.state`; a `$.clock.every` ticker turns
 - If `claude plugin test` says the rollout switch is saved off, run `claude -p "ok"` once to refresh it.
 - Never put a literal zero-width character in a source file; the shellter hook blocks the write.
 - Look up word maps with `Object.hasOwn`; "constructor" is a real chat word and a prototype key.
+- Write regex-bearing code with the Edit or Write tool, not a Python heredoc: backslash escapes such as word
+  boundaries and backreferences land as control characters, and the regex silently never matches.
