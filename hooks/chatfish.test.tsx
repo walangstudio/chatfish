@@ -262,7 +262,12 @@ test('saved settings are re-checked before use', async () => {
 
 test('settings survive a new session through the store', async ($, on) => {
   mock.clock(on)
-  mock.store(on, { settings: { mode: 'roast', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' } })
+  const store = new Map<string, unknown>([['settings', { mode: 'roast', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' }]])
+  on('store.get', (_$, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
@@ -271,4 +276,37 @@ test('settings survive a new session through the store', async ($, on) => {
   await $.command.run(run('config mode=wholesome'))
   const back = await $.command.run(run('status'))
   expect(back.text).toContain('wholesome')
+  expect(store.get('settings')).toEqual({ mode: 'wholesome', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' })
+})
+
+test('a store that cannot be read or written does not break commands', async ($, on) => {
+  mock.clock(on)
+  const toasts: string[] = []
+  on('store.get', () => ({ deny: 'disk on fire' }))
+  on('store.set', () => ({ deny: 'disk on fire' }))
+  on('ui.toast', (_$, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  const status = await $.command.run(run('status'))
+  expect(status.text).toContain('offline')
+  const set = await $.command.run(run('config mode=roast'))
+  expect(set.text).toContain('roast')
+  expect(set.text).toContain('Could not save it for next time.')
+  await $.command.run(run('status'))
+  expect(toasts.filter(t => t.includes('could not load its saved settings')).length).toBe(1)
+})
+
+test('a failed settings read never wipes what is stored', async ($, on) => {
+  mock.clock(on)
+  const store = new Map<string, unknown>([['settings', { mode: 'roast', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' }]])
+  let failReads = 1
+  on('store.get', (_$, e) => (failReads-- > 0 ? { deny: 'blip' } : { value: store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('ui.toast', () => ({ value: undefined }))
+  await $.command.run(run('config mode=wholesome'))
+  expect(store.get('settings')).toEqual({ mode: 'wholesome', viewers: 4000, rate: 'quiet', streamer: 'CodeCat' })
 })

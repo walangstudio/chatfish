@@ -3,7 +3,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Activity, Badge, ChatLine, Config } from '../types'
 import {
-  DEFAULT_CONFIG, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, toSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
+  DEFAULT_CONFIG, MIN_CLAUDE_CODE, NEW_CROWD, fromSaved, PERIOD_MS, USAGE, isOlderThan, liveViewers, maybeRaid, nextViewers, stepCrowd, badgesFor, batchSize, emotify, toHandle, formatViewers,
   nameColor, parseArgs, parseModelLines, systemPrompt, userPrompt,
 } from './chat'
 import type { Crowd, Parsed } from './chat'
@@ -16,6 +16,8 @@ const config = atom({ plugin: 'chatfish', key: 'config' } as const, DEFAULT_CONF
 const lines = atom({ plugin: 'chatfish', key: 'lines' } as const, [])
 const activity = atom({ plugin: 'chatfish', key: 'activity' } as const, [])
 const viewerCount = atom({ plugin: 'chatfish', key: 'viewers' } as const, 0)
+// In $.state, not the module, so a hot reload does not load saved settings over newer ones.
+const isSettingsLoaded = atom({ plugin: 'chatfish', key: 'isSettingsLoaded' } as const, false)
 
 // Twitch dark theme: surface #18181B, text #EFEFF1, muted #ADADB8, borders #2F2F35, brand purple #9146FF.
 const TW = {
@@ -60,6 +62,7 @@ async function lookupName($: Engine) {
   }
 }
 
+const NOT_SAVED = ' Could not save it for next time.'
 const clip = (s: string) => (s.length > 100 ? `…${s.slice(-99)}` : s)
 const streamerName = (cfg: Config) => cfg.streamer || autoName || 'streamer'
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -78,32 +81,59 @@ async function record($: Engine, kind: Activity['kind'], text: string) {
 }
 
 // For hooks on the session's hot path: chat bookkeeping must never hold up a tool or a turn.
-function note($: Engine, kind: Activity['kind'], text: string) {
-  record($, kind, text).catch(() => {})
+// Entries passed together are recorded in that order.
+function note($: Engine, ...entries: [Activity['kind'], string][]) {
+  void (async () => {
+    for (const [kind, text] of entries) await record($, kind, text)
+  })().catch(() => {})
 }
 
 async function say($: Engine, cfg: Config, text: string) {
   await addLines($, [{ kind: 'streamer', user: streamerName(cfg), text }])
   await record($, 'reply', text)
-  void tick($)
+  void tick($, true)
 }
 
-const saveSettings = ($: Engine, cfg: Config) => $.store.set('settings', toSaved(cfg))
-
-// Settings from earlier sessions, merged in once on first use.
-let hasLoadedSaved = false
-async function loadSaved($: Engine) {
-  if (hasLoadedSaved) return
-  hasLoadedSaved = true
-  const saved = fromSaved(await $.store.get('settings'))
-  if (Object.keys(saved).length) await update($, config, c => ({ ...c, ...saved }))
+// Writes only the settings a command changed, merged into what is stored, so a value
+// this session never touched is never overwritten. False when the store refuses; the
+// setting still applies to this session.
+async function saveSettings($: Engine, patch: Partial<Config>) {
+  const changed = fromSaved(patch)
+  if (Object.keys(changed).length === 0) return true
+  try {
+    await $.store.set('settings', { ...fromSaved(await $.store.get('settings')), ...changed })
+    return true
+  } catch {
+    return false
+  }
 }
 
-async function tick($: Engine) {
+const saveNote = (isSaved: boolean) => (isSaved ? '' : NOT_SAVED)
+
+// Settings from earlier sessions, merged in once per session; concurrent callers share one load.
+// A failure is reported once and not retried, so it can never overwrite changes made since.
+let savedLoad: Promise<void> | undefined
+function loadSaved($: Engine) {
+  savedLoad ??= (async () => {
+    if (await read($, isSettingsLoaded)) return
+    try {
+      const saved = fromSaved(await $.store.get('settings'))
+      if (Object.keys(saved).length) await update($, config, c => ({ ...c, ...saved }))
+    } catch {
+      try {
+        $.ui.toast('chatfish could not load its saved settings; using the current ones.')
+      } catch {}
+    }
+    await update($, isSettingsLoaded, () => true)
+  })().catch(() => {})
+  return savedLoad
+}
+
+async function tick($: Engine, isReply = false) {
   const s = stream
-  // A tick already talking to Haiku for this stream: run once more when it finishes.
+  // A reply that lands while Haiku is busy gets its own run afterwards; timer ticks just skip.
   if (s.isBusy) {
-    s.isQueued = true
+    if (isReply) s.isQueued = true
     return
   }
   s.isBusy = true
@@ -131,7 +161,8 @@ async function tick($: Engine) {
     await update($, viewerCount, () => viewers)
     if (isStale()) return
     $.ui.status(`● LIVE ${formatViewers(viewers)}`)
-    const count = batchSize(cfg.rate, viewers)
+    // Someone always answers the streamer once anyone is watching.
+    const count = Math.max(isReply && viewers > 0 ? 1 : 0, batchSize(cfg.rate, viewers))
     if (count === 0) return
     const fresh = all.filter(a => a.seq > s.seenSeq)
     s.seenSeq = all.at(-1)?.seq ?? s.seenSeq
@@ -178,7 +209,9 @@ async function tick($: Engine) {
     s.isBusy = false
     if (s.isQueued && !isStale()) {
       s.isQueued = false
-      void tick($)
+      // Only if the busy tick finished before the reply arrived; otherwise it already answered.
+      const all = await read($, activity).catch(() => [])
+      if (all.some(a => a.seq > s.seenSeq)) void tick($, true)
     }
   }
 }
@@ -239,9 +272,9 @@ export const register: Register = on => {
         return { text: 'chatfish is offline.' }
       case 'config': {
         const nextCfg = await update($, config, c => ({ ...c, ...cmd.patch }))
-        await saveSettings($, nextCfg)
         if (nextCfg.live && nextCfg.rate !== cfg.rate) start($, nextCfg)
-        return { text: `chatfish settings: ${describe(nextCfg)}${nextCfg.live ? ' (applied live)' : ''}` }
+        const isSaved = await saveSettings($, cmd.patch)
+        return { text: `chatfish settings: ${describe(nextCfg)}${nextCfg.live ? ' (applied live)' : ''}${saveNote(isSaved)}` }
       }
       case 'on':
       case 'set': {
@@ -249,8 +282,8 @@ export const register: Register = on => {
         const isGoingLive = live && !cfg.live
         const now = await $.clock.now()
         const nextCfg = await update($, config, c => ({ ...c, ...cmd.patch, live, startedAt: isGoingLive ? now : c.startedAt }))
-        await saveSettings($, nextCfg)
-        if (!live) return { text: `chatfish settings saved (${describe(nextCfg)}). /chatfish on to go live.` }
+        const isSaved = await saveSettings($, cmd.patch)
+        if (!live) return { text: `chatfish settings ${isSaved ? 'saved' : 'set'} (${describe(nextCfg)}). /chatfish on to go live.${saveNote(isSaved)}` }
         if (isGoingLive) {
           stream = newStream()
           await update($, activity, () => [])
@@ -259,7 +292,7 @@ export const register: Register = on => {
         }
         await $.ui.open({ id: PANE, title: 'Stream Chat' })
         start($, nextCfg)
-        return { text: `chatfish is LIVE (${describe(nextCfg)}).` }
+        return { text: `chatfish is LIVE (${describe(nextCfg)}).${saveNote(isSaved)}` }
       }
       case 'reply':
         if (!cfg.live) return { text: 'chatfish is offline. /chatfish on first.' }
@@ -278,8 +311,9 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     const result = await next(e)
-    // Announce only prompts that actually went through; another hook may have dropped it.
-    if (!result.drop && !e.text.startsWith('/')) note($, 'prompt', `Streamer asked the agent: "${e.text.slice(0, 160)}"`)
+    // Announce only prompts that went through, as the agent received them.
+    // Chat sees what the streamer typed, not text other hooks wrapped around it.
+    if (result.drop === undefined && !e.text.startsWith('/')) note($, ['prompt', `Streamer asked the agent: "${e.text.slice(0, 160)}"`])
     return result
   })
 
@@ -288,10 +322,10 @@ export const register: Register = on => {
     const target = [input.command, input.file_path, input.pattern, input.url, input.description, input.query]
       .find(v => typeof v === 'string') as string | undefined
     const tool = String(e.tool)
-    note($, 'tool', `Agent runs ${tool}${target ? `: ${clip(target)}` : ''}`)
+    note($, ['tool', `Agent runs ${tool}${target ? `: ${clip(target)}` : ''}`])
     const ran = await next(e)
-    if ('deny' in ran && ran.deny) note($, 'error', `${tool} was blocked`)
-    else if (ran.isError) note($, 'error', `${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`)
+    if ('deny' in ran && ran.deny) note($, ['error', `${tool} was blocked`])
+    else if (ran.isError) note($, ['error', `${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`])
     return ran
   })
 
@@ -303,13 +337,15 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId) return next(e)
     isTurnRunning = false
-    if (e.isAborted || e.reason === 'aborted') note($, 'error', 'The streamer interrupted Claude mid-task.')
-    else if (e.reason === 'error') note($, 'error', 'Claude hit an error and stopped.')
-    else if (e.reason === 'refusal') note($, 'error', 'Claude refused the task.')
+    // isAborted predates reason on older builds.
+    if (e.isAborted || e.reason === 'aborted') note($, ['error', 'The streamer interrupted Claude mid-task.'])
+    else if (e.reason === 'error') note($, ['error', 'Claude hit an error and stopped.'])
+    else if (e.reason === 'refusal') note($, ['error', 'Claude refused the task.'])
     else {
       const answer = e.answer.trim()
-      if (answer) note($, 'said', `Claude said: "${answer.slice(0, 200)}"`)
-      note($, 'done', 'The agent finished its turn and is waiting for the streamer.')
+      const done: [Activity['kind'], string] = ['done', 'The agent finished its turn and is waiting for the streamer.']
+      if (answer) note($, ['said', `Claude said: "${answer.slice(0, 200)}"`], done)
+      else note($, done)
     }
     return next(e)
   })
@@ -390,7 +426,8 @@ export const register: Register = on => {
               placeholder="Send a message"
               submitLabel="Chat"
               onSubmit={async text => {
-                if (text.trim() && (await read($, config)).live) await say($, cfg, text.trim())
+                const now = await read($, config)
+                if (text.trim() && now.live) await say($, now, text.trim())
               }}
             />
           </Box>

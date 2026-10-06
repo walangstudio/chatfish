@@ -84,8 +84,6 @@ export function parseConfig(text: string): Partial<Config> | string {
 // Settings kept across sessions. The store is a file anyone can edit, so every field is re-checked.
 export type Saved = Pick<Config, 'mode' | 'viewers' | 'rate' | 'streamer'>
 
-export const toSaved = ({ mode, viewers, rate, streamer }: Config): Saved => ({ mode, viewers, rate, streamer })
-
 export function fromSaved(v: unknown): Partial<Saved> {
   if (typeof v !== 'object' || v === null) return {}
   const o = v as Record<string, unknown>
