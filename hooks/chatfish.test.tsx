@@ -16,6 +16,7 @@ test('parses commands order-free with aliases', async () => {
   expect(parseArgs('')).toEqual({ kind: 'status' })
   expect(parseArgs('help')).toEqual({ kind: 'help' })
   expect(parseArgs('--help')).toEqual({ kind: 'help' })
+  expect(parseArgs('help config')).toEqual({ kind: 'help' })
   expect(parseArgs('on banana').kind).toBe('error')
   expect(parseArgs('on 0').kind).toBe('error')
   expect(parseArgs('reply').kind).toBe('error')
@@ -331,10 +332,12 @@ test('the pane input starts empty again after each message', async ($, on) => {
   await $.command.run(run('live'))
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'chatfish', surface, ...PANE })
-    const before = await ui.find({ type: 'Input' })
-    await ui.input({ key: before!.key!, text: 'hello chat' })
+    await ui.input({ key: 'send', text: 'hello chat', kind: 'change' })
+    expect((await ui.find({ type: 'Input' }))!.props.value).toBe('hello chat')
+    await ui.input({ key: 'send', text: 'hello chat' })
     const after = await ui.find({ type: 'Input' })
-    expect(after!.key).not.toBe(before!.key)
+    expect(after!.key).toBe('send')
+    expect(after!.props.value).toBe('')
     expect(await ui.find({ type: 'Text', text: /hello chat/ })).toBeDefined()
     await ui.unmount()
   }

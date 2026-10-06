@@ -101,9 +101,10 @@ export const HELP = [
   '',
   '/chatfish live [mode] [viewers] [rate]   go live (also on, start); options in any order',
   '/chatfish off                            end the stream (also stop, offline)',
-  '/chatfish reply <message>                talk to chat; @name someone to get them to answer',
+  '/chatfish reply <message>                talk to chat (also say); @name someone to get them to answer',
+  '/chatfish <mode|viewers|rate>            change a setting directly, e.g. /chatfish roast 5k',
   '/chatfish config key=value ...           change settings, live or not; they stick across sessions',
-  '/chatfish status                         show the current settings',
+  '/chatfish status                         show the current settings (also bare /chatfish)',
   '/chatfish help                           this help',
   '',
   'config keys:',
@@ -118,7 +119,7 @@ export const HELP = [
 export function parseArgs(args: string): Command {
   const trimmed = args.trim()
   if (trimmed === '' || trimmed.toLowerCase() === 'status') return { kind: 'status' }
-  if (['help', '-h', '--help', '?'].includes(trimmed.toLowerCase())) return { kind: 'help' }
+  if (/^(help|-h|--help|\?)(\s|$)/i.test(trimmed)) return { kind: 'help' }
   const [head = '', ...rest] = trimmed.split(/\s+/)
   const verb = head.toLowerCase()
   if (verb === 'reply' || verb === 'say') {

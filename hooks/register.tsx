@@ -16,9 +16,9 @@ const config = atom({ plugin: 'chatfish', key: 'config' } as const, DEFAULT_CONF
 const lines = atom({ plugin: 'chatfish', key: 'lines' } as const, [])
 const activity = atom({ plugin: 'chatfish', key: 'activity' } as const, [])
 const viewerCount = atom({ plugin: 'chatfish', key: 'viewers' } as const, 0)
+// What is typed in the pane's input; drawn back as its value so a send can empty it.
+const draft = atom({ plugin: 'chatfish', key: 'draft' } as const, '')
 // In $.state, not the module, so a hot reload does not load saved settings over newer ones.
-// Bumped per message sent from the pane; it keys the input so each send starts empty.
-const sentCount = atom({ plugin: 'chatfish', key: 'sent' } as const, 0)
 const isSettingsLoaded = atom({ plugin: 'chatfish', key: 'isSettingsLoaded' } as const, false)
 
 // Twitch dark theme: surface #18181B, text #EFEFF1, muted #ADADB8, borders #2F2F35, brand purple #9146FF.
@@ -360,7 +360,7 @@ export const register: Register = on => {
     const cfg = await read($, config)
     const all = await read($, lines)
     const watching = await read($, viewerCount)
-    const sent = await read($, sentCount)
+    const typed = await read($, draft)
     // Desktop draws its own field chrome and a proportional font, so cell-based rules look broken there.
     const isDesktop = e.surface === 'desktop'
     const mention = new RegExp(`@${escapeRe(streamerName(cfg))}(?![\\p{L}\\p{N}_])`, 'iu')
@@ -432,15 +432,17 @@ export const register: Register = on => {
             {...(isDesktop ? { paddingX: 1, paddingY: 1 } : { marginX: 1, borderStyle: 'round' as const, borderColor: TW.input })}
           >
             <els.Input
-              key={`send-${sent}`}
+              key="send"
               placeholder="Send a message"
               submitLabel="Chat"
-              {...(sent > 0 ? { autoFocus: true as const } : {})}
+              value={typed}
+              onInput={text => void update($, draft, () => text)}
               onSubmit={async text => {
+                // Empty the field first, so anything typed while the message posts is kept.
+                await update($, draft, () => '')
+                const message = text.trim()
                 const now = await read($, config)
-                if (!text.trim() || !now.live) return
-                await say($, now, text.trim())
-                await update($, sentCount, n => n + 1)
+                if (message && now.live) await say($, now, message)
               }}
             />
           </Box>
