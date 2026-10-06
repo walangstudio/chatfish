@@ -368,7 +368,8 @@ export const register: Register = on => {
     const cols = Math.max(24, e.props.bodyColumns)
     const rows = Math.max(10, e.props.scroll.bodyRows || (e.viewport?.rows ?? 30))
     const inner = cols - 2
-    const budget = rows - 7
+    // Rows left for chat after the header, divider and input; desktop pads the input instead of a divider.
+    const budget = rows - (isDesktop ? 8 : 7)
 
     const shown: ChatLine[] = []
     let used = 0
@@ -445,7 +446,9 @@ export const register: Register = on => {
                 void $.ui.focus({ requestId: PANE, key: `send-${n}` }).catch(() => {})
                 const message = text.trim()
                 const now = await read($, config)
-                if (message && now.live) await say($, now, message)
+                if (!message || !now.live) return
+                // The field is already empty, so say so rather than lose the message silently.
+                await say($, now, message).catch(() => $.ui.toast(`chatfish could not post: ${message.slice(0, 60)}`))
               }}
             />
           </Box>
