@@ -46,16 +46,16 @@ const badgeSvg = (b: Badge) =>
 // ponytail: lives in the module, so a mod reload starts a fresh crowd; move to $.state if that shows.
 type Stream = {
   isBusy: boolean; isQueued: boolean; seenSeq: number; crowdSeq: number; idleTicks: number; crowd: Crowd
-  // Picked once, so the first minute of chat plays out one scene instead of a new one every tick.
-  opening: string
+  // Picked once and handed to Haiku once, so the stream opens with one scene instead of re-opening every batch.
+  opening: string | undefined
+  // Subagents Claude itself sent out during this stream. Other loops also carry an agent id (the
+  // engine's own forks for compaction or memory, teammates, other plugins' agents); chat ignores those.
+  subagents: Set<string>
 }
 const newStream = (seq = 0): Stream => ({
-  isBusy: false, isQueued: false, seenSeq: seq, crowdSeq: seq, idleTicks: 0, crowd: NEW_CROWD, opening: streamOpening(Math.random),
+  isBusy: false, isQueued: false, seenSeq: seq, crowdSeq: seq, idleTicks: 0, crowd: NEW_CROWD,
+  opening: streamOpening(Math.random), subagents: new Set(),
 })
-
-// Subagents Claude itself sent out. Other loops also carry an agent id (the engine's own forks
-// for compaction or memory, agent-team teammates); chat ignores those.
-const subagents = new Set<string>()
 
 let stream = newStream()
 let ticker: Timer | undefined
@@ -77,6 +77,8 @@ async function lookupName($: Engine) {
 
 const NOT_SAVED = ' Could not save it for next time.'
 const clip = (s: string) => (s.length > 100 ? `…${s.slice(-99)}` : s)
+// Reports from other agents arrive as whole documents; chat only needs the gist on one line.
+const gist = (s: string, max: number) => s.replace(/\s+/g, ' ').trim().slice(0, max)
 const streamerName = (cfg: Config) => cfg.streamer || autoName || 'streamer'
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -209,7 +211,10 @@ async function tick($: Engine, isReply = false) {
           replies,
         }),
       }).catch(() => undefined)
-      if (r?.isAnswered) next = parseModelLines(r.text).slice(0, count + 1)
+      if (r?.isAnswered) {
+        next = parseModelLines(r.text).slice(0, count + 1)
+        s.opening = undefined
+      }
     }
     if (isStale()) return
     if (next.length === 0) next = cannedChat(cfg.mode, useModel ? count : Math.ceil(count / 2), fresh.at(-1))
@@ -338,11 +343,11 @@ export const register: Register = on => {
     const target = [input.command, input.file_path, input.pattern, input.url, input.description, input.query]
       .find(v => typeof v === 'string') as string | undefined
     const tool = String(e.tool)
-    // Loops chat does not follow, and the Agent tool itself (agent.spawn announces that), stay quiet.
-    const isOurs = !e.agentId || subagents.has(e.agentId)
-    if (!isOurs || tool === 'Agent' || tool === 'Task') return next(e)
+    // Loops chat does not follow stay quiet. The Agent tool's start is announced by agent.spawn,
+    // but if it is blocked or fails before spawning, chat still hears about it below.
+    if (e.agentId && !stream.subagents.has(e.agentId)) return next(e)
     const who = e.agentId ? 'A subagent' : 'Agent'
-    note($, ['tool', `${who} runs ${tool}${target ? `: ${clip(target)}` : ''}`])
+    if (tool !== 'Agent' && tool !== 'Task') note($, ['tool', `${who} runs ${tool}${target ? `: ${clip(target)}` : ''}`])
     const ran = await next(e)
     if ('deny' in ran && ran.deny) note($, ['error', `${who}'s ${tool} was blocked`])
     else if (ran.isError) note($, ['error', `${who}'s ${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`])
@@ -351,10 +356,12 @@ export const register: Register = on => {
 
   on('agent.spawn', async ($, e, next) => {
     const result = await next(e)
-    // Announce only subagents that actually start; teammates are an agent team's business.
-    if (!('deny' in result && result.deny) && !e.isTeammate) {
-      if (result.agentId) subagents.add(result.agentId)
-      note($, ['subagent', `Claude sent out a subagent (${e.subagentType}) to: ${clip(e.description)}`])
+    // Only subagents that actually started (an agent id), that Claude itself sent (the engine, from the
+    // main loop or a subagent chat already follows), and that are not agent-team teammates.
+    const isClaudes = next.origin.plugin === 'engine' && (!e.parentAgentId || stream.subagents.has(e.parentAgentId))
+    if ('agentId' in result && result.agentId && isClaudes && !e.isTeammate) {
+      stream.subagents.add(result.agentId)
+      note($, ['subagent', `Claude sent out a subagent (${e.subagentType}) to: ${clip(gist(e.description, 200))}`])
     }
     return result
   })
@@ -366,12 +373,13 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId) {
-      // A subagent's turn ends inside the main turn: report how it went, never "done".
-      if (subagents.delete(e.agentId)) {
-        const answer = e.answer.trim()
+      // A subagent's turn ends inside the main turn: report how it went, never "done". It stays
+      // followed, since Claude can resume it with a message and it runs again.
+      if (stream.subagents.has(e.agentId)) {
+        const answer = gist(e.answer, 160)
         if (e.isAborted || e.reason === 'aborted') note($, ['error', 'A subagent was stopped before it finished.'])
         else if (e.reason === 'error' || e.reason === 'refusal') note($, ['error', 'A subagent hit a wall and gave up.'])
-        else note($, ['subagent', answer ? `A subagent reported back: "${answer.slice(0, 160)}"` : 'A subagent finished its task.'])
+        else note($, ['subagent', answer ? `A subagent reported back: "${answer}"` : 'A subagent finished its task.'])
       }
       return next(e)
     }

@@ -403,7 +403,7 @@ test('chat hears about subagents that actually start, and only those', async ($,
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.close', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
-  on('agent.spawn', () => (refuse ? { deny: 'no Explore here' } : { model: 'haiku', agentId: 'sub-1' }))
+  on('agent.spawn', (_$, e) => (refuse ? { deny: 'no Explore here' } : e.description === 'Phantom errand' ? { model: 'haiku' } : { model: 'haiku', agentId: 'sub-1' }))
   on('model.complete', (_$, e) => {
     prompts.push(e.prompt)
     return { value: { isAnswered: false, reason: 'empty-reply', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }
@@ -413,9 +413,13 @@ test('chat hears about subagents that actually start, and only those', async ($,
   refuse = true
   await $.agent.spawn({ ...spawnInput, description: 'A refused errand' })
   refuse = false
+  await $.agent.spawn({ ...spawnInput, description: 'Phantom errand' })
+  await $.agent.spawn({ ...spawnInput, description: 'Side quest of a stranger', parentAgentId: 'not-followed' })
   await $.agent.spawn(spawnInput)
   await clock.advance(20_000)
   expect(prompts.some(p => p.includes('Claude sent out a subagent (Explore) to: Hunt the flaky test'))).toBe(true)
   expect(prompts.some(p => p.includes('A refused errand'))).toBe(false)
+  expect(prompts.some(p => p.includes('Phantom errand'))).toBe(false)
+  expect(prompts.some(p => p.includes('Side quest of a stranger'))).toBe(false)
   await $.command.run(run('off'))
 })
