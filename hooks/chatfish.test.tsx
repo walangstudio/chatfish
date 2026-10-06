@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { cannedChat, cannedLine, cannedName, endings, subject, templateCombos } from './canned'
 
-import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
+import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, earlyScene, systemPrompt, userPrompt } from './chat'
 
 const PANE = { component: 'Pane', requestId: 'chatfish', props: { title: 'Stream Chat', isFocused: false, bodyColumns: 40, placement: 'dock', scroll: { offset: 0, bodyRows: 200 }, view: {} }, viewport: { columns: 40, rows: 200 } } as const
 const run = (args: string) => ({ command: 'chatfish', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } }) as const
@@ -374,4 +374,38 @@ test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', 
 test('about 60% of template lines end with nothing extra', async () => {
   const end = endings(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
   expect(end.filter(w => w === '').length / end.length).toBe(0.6)
+})
+
+test('stream openings vary and do not script stock openers', async () => {
+  const base = { viewers: 3, trend: 'rising', uptimeMs: 10_000, idleMs: 0, isThinking: false, count: 1, activity: [], isNew: false, recent: [], replies: [] } as const
+  const openings = new Set(Array.from({ length: 2_000 }, () => userPrompt(base)))
+  expect(openings.size).toBeGreaterThan(1_800)
+  for (const p of openings) expect(p).toContain('no stock "first"')
+  expect(new Set(Array.from({ length: 2_000 }, () => earlyScene(Math.random))).size).toBeGreaterThan(1_800)
+  expect(userPrompt({ ...base, uptimeMs: 600_000 })).not.toContain('no stock')
+  const openers = new Set(Array.from({ length: 500 }, () => /The first line comes from ([^.(]+)/.exec(userPrompt(base))?.[1]?.trim()))
+  expect(openers.size).toBeGreaterThan(6)
+})
+
+test('chat hears about subagents being sent out', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  const prompts: string[] = []
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.status', () => ({ value: undefined }))
+  on('agent.spawn', () => ({ model: 'haiku' }))
+  on('model.complete', (_$, e) => {
+    prompts.push(e.prompt)
+    return { value: { isAnswered: false, reason: 'empty-reply', usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }
+  })
+  await $.command.run(run('live 1k'))
+  await clock.advance(130_000)
+  await $.agent.spawn({
+    tool_use_id: 'toolu_test', prompt: 'find the flaky test', description: 'Hunt the flaky test', subagentType: 'Explore',
+    provider: { plugin: 'engine', tier: 'core' }, parentModel: 'opus', background: false, fork: false,
+  })
+  await clock.advance(20_000)
+  expect(prompts.some(p => p.includes('Claude sent a Explore subagent to: Hunt the flaky test'))).toBe(true)
+  await $.command.run(run('off'))
 })

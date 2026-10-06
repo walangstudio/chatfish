@@ -273,6 +273,7 @@ export function systemPrompt(mode: Mode, streamer: string) {
     `Regulars who are almost always here (keep their voice, history and opinions consistent):\n${REGULARS.map(r => `- ${r.name}: ${r.persona}`).join('\n')}\nThe rest of chat is random viewers with invented handles.`,
     'Everyone has emotions that shift with what happens: frustrated when Claude is stuck, hyped on a win, bored in a silence, defensive when teased, warm when someone is kind to them. Let the mood show in how they write.',
     'When the streamer talks in chat it is a real conversation, not a cue for emote spam: the person addressed (or whoever cares about the topic) answers in character with a real opinion, knowledge, a joke, a follow-up question, a disagreement or a personal story. Keep threads going across batches until they naturally die out.',
+    'Claude sometimes sends subagents off to do part of the work. Chat follows them like side characters: guesses what they will find, cheers or doubts them, reacts when they report back.',
     'Viewers notice pacing. A long silence gets jokes about the AI being slow, "is it frozen", "he is thinking", "brb food", people saying they are leaving. When action resumes after a silence, chat wakes up.',
     'Messages are short (1-12 words), lowercase-ish, Twitch slang. Use emote names (KEKW, Pog, LUL, Kappa, monkaS, PepeHands, catJAM, 5Head, Clueless, Copium, o7, <3) and emoji freely, spam them when hyped.',
     'Rarely (at most one line) add a subscription/raid/bits event as `NOTICE: username subscribed for 3 months!` or similar.',
@@ -283,6 +284,35 @@ export function systemPrompt(mode: Mode, streamer: string) {
 }
 
 const secs = (ms: number) => (ms < 90_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`)
+
+// Each stream opens with its own scene, assembled from parts, so no two starts read alike.
+const EARLY_WHEN = [
+  'The stream started a moment ago.', 'Brand new stream.', 'The stream just went live.', 'A quiet start to the stream.',
+  'The stream has been up for under a minute.', 'Fresh stream, the title barely changed.', 'Going live late tonight.',
+  'An unannounced stream just started.', 'Early morning stream, just went live.', 'The stream came back after a short break.',
+]
+const EARLY_WHO = [
+  'One regular is already here', 'A couple of regulars show up', 'Two strangers wander in', 'A lurker from last week appears',
+  'Someone who found the stream on the front page arrives', 'A few people from a friend\'s stream drift over',
+  'A student procrastinating on homework joins', 'Someone on their lunch break tunes in', 'A night owl from another timezone shows up',
+  'A viewer who only watches for the code joins', 'A long-time subscriber returns after months away', 'A first-time viewer arrives',
+]
+const EARLY_DOING = [
+  'and greets the streamer by name.', 'and asks what is being built today.', 'and reacts to whatever is on screen right away.',
+  'and picks up a running joke from last stream.', 'and asks what language this is.', 'and comments on the setup or the theme.',
+  'and says where they found the stream.', 'and complains about their own code at work.', 'and asks if the AI is doing all the work.',
+  'and immediately backseat-codes.', 'and asks how long the stream will be.', 'and shares what they are eating.',
+  'and wonders out loud whether the bug from last time got fixed.', 'and asks the streamer how their day went.',
+]
+const EARLY_MOOD = [
+  'Chat is sleepy.', 'Chat is curious.', 'Chat is chaotic from the first line.', 'Chat is cozy and slow.',
+  'Chat is hyped for no clear reason.', 'Chat is half asleep, half caffeinated.', 'Chat is sarcastic.', 'Chat is wholesome.',
+  'Chat is distracted by something off-topic.', 'Chat is very talkative for so few people.',
+]
+// About 17,000 distinct opening scenes.
+export const earlyScene = (rand: () => number) =>
+  `${pick(EARLY_WHEN, rand)} ${pick(EARLY_WHO, rand)} ${pick(EARLY_DOING, rand)} ${pick(EARLY_MOOD, rand)}`
+const pick = <T,>(xs: readonly T[], rand: () => number) => xs[Math.floor(rand() * xs.length)]!
 
 export function userPrompt(o: {
   viewers: number
@@ -295,9 +325,15 @@ export function userPrompt(o: {
   isNew: boolean
   recent: readonly string[]
   replies: readonly string[]
+  rand?: () => number
 }) {
   const parts = [`Stream uptime: ${secs(o.uptimeMs)}. Viewers watching: ${o.viewers} (${o.trend}).`]
-  if (o.uptimeMs < 90_000) parts.push('The stream just went live and the first few viewers are trickling in: greetings, "first", "just got here", asking what the stream is about.')
+  if (o.uptimeMs < 90_000) {
+    const rand = o.rand ?? Math.random
+    // Without a named opener the friendliest regular greets everyone first, every single stream.
+    const opener = rand() < 0.4 ? 'a viewer nobody has seen before (invent the handle)' : pick(REGULARS, rand).name
+    parts.push(`${earlyScene(rand)} The first line comes from ${opener}. Every line should open differently; no stock "first" or "just got here".`)
+  }
   if (o.trend === 'falling' && o.idleMs >= 45_000) parts.push('Viewers are leaving because nothing is happening; a few say bye or complain it is boring.')
   if (o.activity.length) {
     const label = o.isNew ? 'Just happened on stream (oldest first)' : 'Earlier on stream (oldest first)'

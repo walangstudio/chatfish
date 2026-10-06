@@ -327,11 +327,18 @@ export const register: Register = on => {
     const target = [input.command, input.file_path, input.pattern, input.url, input.description, input.query]
       .find(v => typeof v === 'string') as string | undefined
     const tool = String(e.tool)
-    note($, ['tool', `Agent runs ${tool}${target ? `: ${clip(target)}` : ''}`])
+    // Subagents run their own tools; chat tells them apart from the main agent.
+    const who = e.agentId ? 'A subagent' : 'Agent'
+    note($, ['tool', `${who} runs ${tool}${target ? `: ${clip(target)}` : ''}`])
     const ran = await next(e)
-    if ('deny' in ran && ran.deny) note($, ['error', `${tool} was blocked`])
-    else if (ran.isError) note($, ['error', `${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`])
+    if ('deny' in ran && ran.deny) note($, ['error', `${who}'s ${tool} was blocked`])
+    else if (ran.isError) note($, ['error', `${who}'s ${tool} failed${ran.text ? `: ${ran.text.slice(0, 100)}` : ''}`])
     return ran
+  })
+
+  on('agent.spawn', ($, e, next) => {
+    note($, ['subagent', `Claude sent a ${e.subagentType} subagent to: ${clip(e.description)}`])
+    return next(e)
   })
 
   on('turn.start', ($, e, next) => {
@@ -340,7 +347,12 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId) return next(e)
+    if (e.agentId) {
+      // A subagent's turn ends inside the main turn: report what it found, never "done".
+      const answer = e.answer.trim()
+      note($, ['subagent', answer ? `A subagent reported back: "${answer.slice(0, 160)}"` : 'A subagent finished its task.'])
+      return next(e)
+    }
     isTurnRunning = false
     // isAborted predates reason on older builds.
     if (e.isAborted || e.reason === 'aborted') note($, ['error', 'The streamer interrupted Claude mid-task.'])

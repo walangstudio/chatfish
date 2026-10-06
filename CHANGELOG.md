@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 - 2026-10-06
+
+- Streams open differently each time: about 17,000 opening scenes (who shows up, what they do, the mood)
+  instead of always "first" and "just got here".
+- Subagents: chat hears when Claude sends one out, sees the tools each subagent runs (labelled as the
+  subagent, not Claude), and reacts when it reports back.
+
 ## v0.1.1 - 2026-10-06
 
 - `/chatfish help` lists every command, setting, mode and rate.

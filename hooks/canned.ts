@@ -230,6 +230,11 @@ const REACT: Partial<Record<Activity['kind'], readonly string[]>> = {
   said: ['the AI said it like its easy', 'trust the AI', 'chat GPT who', 'AI explained it better than my prof', 'big words'],
   prompt: ['new task Pog', 'oh this should be fun', 'here we go again', 'good luck', 'that sounds hard', 'easy'],
   raid: ['RAID', 'welcome raiders', 'hi raiders <3', 'RAID HYPE', 'welcome in', 'raiders say hi'],
+  subagent: [
+    'minions deployed', 'sending in the clones', 'delegation king', 'the AI hired an intern', 'subagent arc',
+    'agents all the way down', 'it made a friend', 'team of AIs Pog', 'outsourcing speedrun', 'go little guy go',
+    'the subagent is cooking', 'report back soldier o7', 'multitasking legend', 'how many of them are there monkaS',
+  ],
 }
 
 // Shared lines that only fit one side: nice modes never mock, roast never gushes.
