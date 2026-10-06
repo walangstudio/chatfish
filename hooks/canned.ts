@@ -13,8 +13,7 @@ const EMOTES = [
 const LAUGH = ['KEKW', 'LUL', 'OMEGALUL', 'LMAO', 'lmaooo', 'XD', 'ICANT', 'HAHAHA', 'lol', 'dead']
 const HYPE = ['Pog', 'PogChamp', 'POGGERS', 'LETS GOOO', 'W', 'HUGE', 'clean', 'insane', 'GG', 'sheesh']
 const SAD = ['PepeHands', 'BibleThump', 'NotLikeThis', 'F', 'oof', 'pain', 'rip', 'monkaS', 'Sadge']
-// Most real messages end with nothing, so the empty ending is listed several times on purpose.
-const TAIL = ['', '', '', '', '', '', '', '', '', ...EMOTES, ...LAUGH, ...HYPE, ...SAD, '!!', '??', 'lol', 'fr', 'ngl', 'tbh']
+const WARM = ['<3', 'catJAM', 'o7', 'Pog', 'love it', 'so cozy', 'proud of you', 'nice']
 const GREET = ['hi', 'hello', 'yo', 'hey', 'sup', 'hiii', 'heyo', 'good morning', 'gm', 'evening', 'howdy', 'hola', 'oi', 'wassup', 'heya']
 const WHO = [
   'chat', 'everyone', 'streamer', 'gamers', 'nerds', 'friends', 'bestie', 'fam', 'lurkers', 'mods',
@@ -24,29 +23,38 @@ const LANGS = [
   'rust', 'go', 'python', 'typescript', 'java', 'c++', 'zig', 'haskell', 'php', 'lua', 'elixir', 'kotlin',
   'c#', 'ruby', 'swift', 'scala', 'ocaml', 'clojure', 'dart', 'bash',
 ]
+// Two different languages per line; "rust > rust" is not a take.
+const VERSUS = ['>', 'is better than', 'is just worse than', 'could never beat', 'vs'].flatMap(cmp =>
+  LANGS.flatMap(a => LANGS.filter(b => b !== a).map(b => `${a} ${cmp} ${b}`)),
+)
+// Singular subjects only, so "is" and "looks" always agree.
 const THINGS = [
-  'the tests', 'the build', 'that regex', 'the types', 'the linter', 'prod', 'the database', 'the cache',
-  'the CI', 'the docs', 'that function', 'the config', 'the API', 'the merge', 'the migration', 'the readme',
-  'that loop', 'the error handling', 'the variable names', 'the commit message', 'that if statement', 'the indentation',
-  'the PR', 'the stack trace', 'the logs', 'the deps', 'node_modules', 'the lockfile', 'the env vars', 'the dockerfile',
-  'the schema', 'the query', 'the retry logic', 'that one comment', 'the TODO list', 'the git history',
-  'the folder structure', 'the naming', 'that hotfix', 'the pipeline',
+  'the test suite', 'the build', 'that regex', 'the type system', 'the linter', 'prod', 'the database', 'the cache',
+  'the CI', 'the documentation', 'that function', 'the config', 'the API', 'the merge', 'the migration', 'the readme',
+  'that loop', 'the error handling', 'the naming', 'the commit message', 'that if statement', 'the indentation',
+  'the PR', 'the stack trace', 'the log output', 'the dependency tree', 'node_modules', 'the lockfile', 'the env file',
+  'the dockerfile', 'the schema', 'the query', 'the retry logic', 'that one comment', 'the TODO list', 'the git history',
+  'the folder structure', 'that hotfix', 'the pipeline', 'the test runner', 'the router', 'the parser', 'the CLI',
+  'the frontend', 'the backend', 'the auth flow', 'the release', 'that branch', 'the diff', 'this codebase',
 ]
 const OPEN = [
   'ok but', 'ngl', 'honestly', 'lowkey', 'highkey', 'not gonna lie', 'bro', 'chat', 'wait', 'yo',
-  'hold on', 'real talk', 'actually', 'fr', 'tbh', 'imagine if', 'no way', 'bruh', 'dude', 'hmm',
+  'hold on', 'real talk', 'actually', 'fr', 'tbh', 'no way', 'bruh', 'dude', 'hmm', 'ok',
 ]
-const PRED = [
-  'is cooking', 'looks cursed', 'is goated', 'is held together by tape', 'is a crime', 'is beautiful',
-  'makes no sense', 'is lowkey genius', 'needs a rewrite', 'will break in prod', 'is giving 2009', 'is suspicious',
-  'passed somehow', 'is peak engineering', 'scares me', 'is actually clean', 'is pure chaos', 'deserves a raise',
-  'needs therapy', 'is why prod is down', 'is art', 'is spaghetti', 'is immaculate', 'hurts my eyes', 'sparks joy',
-  'is a vibe', 'is legacy already', 'is 90% vibes', 'is fine trust', 'just works somehow',
+const PRAISE = [
+  'is cooking', 'is goated', 'is beautiful', 'is lowkey genius', 'is peak engineering', 'is actually clean',
+  'deserves a raise', 'is art', 'is immaculate', 'sparks joy', 'is a vibe', 'just works', 'is so smooth',
+  'is chef kiss', 'is the cleanest thing today', 'is elite', 'looks great', 'is surprisingly good', 'is a masterpiece',
+  'is how it should be done',
 ]
-const ADJ = [
-  'cursed', 'clean', 'sus', 'beautiful', 'scary', 'spicy', 'mid', 'goated', 'ancient', 'chaotic',
-  'elegant', 'questionable', 'blessed', 'illegal', 'unhinged', 'cozy', 'crunchy', 'feral', 'pristine', 'wild',
+const SHADE = [
+  'looks cursed', 'is held together by tape', 'is a crime', 'makes no sense', 'needs a rewrite', 'will break in prod',
+  'is giving 2009', 'is suspicious', 'passed somehow', 'scares me', 'is pure chaos', 'needs therapy', 'is why prod is down',
+  'is spaghetti', 'hurts my eyes', 'is legacy already', 'is 90% vibes', 'is fine trust', 'is a war crime', 'is cooked',
 ]
+const NICE_ADJ = ['clean', 'beautiful', 'goated', 'elegant', 'blessed', 'cozy', 'pristine', 'crisp', 'tidy', 'slick']
+const MEAN_ADJ = ['cursed', 'sus', 'scary', 'mid', 'ancient', 'chaotic', 'questionable', 'illegal', 'unhinged', 'feral']
+const ADJ = [...NICE_ADJ, ...MEAN_ADJ]
 const SNACK = [
   'ramen', 'coffee', 'tea', 'pizza', 'cereal', 'an energy drink', 'toast', 'leftovers', 'dumplings', 'a sandwich',
   'popcorn', 'cold pizza', 'boba', 'instant noodles', 'chips', 'a burrito', 'sushi', 'pancakes', 'a salad', 'cookies',
@@ -57,58 +65,73 @@ const PLACES = [
   'australia', 'korea', 'spain', 'italy', 'sweden', 'argentina', 'nigeria', 'vietnam', 'turkey', 'the netherlands',
 ]
 const CHECKIN = ['greetings from', 'watching from', 'hello from', 'its 3am in', 'chilling in', 'up late in', 'lunch break in', 'raining in']
-const QSTART = ['why is', 'what is', 'who wrote', 'how does', 'wait why is', 'who approved', 'when did we change', 'is anyone else scared of']
+const QSTART = ['why is', 'what is', 'who wrote', 'wait why is', 'who approved', 'when did we change', 'is anyone else scared of']
 const QEND = ['?', '??', '? genuinely asking', '? asking for a friend', 'lol', '?!']
-const CMP = ['>', 'is better than', 'is just worse', 'could never beat', 'who still uses', 'vs']
 const BRB = ['brb getting', 'back with', 'just grabbed', 'ok making', 'having', 'got']
 const WATCH = ['watching', 'lurking', 'here', 'vibing', 'learning', 'procrastinating']
 
 type Part = string | readonly string[]
 
+// About 60% of real messages end with nothing; the rest end with a word or emote that fits the mood.
+const endings = (words: readonly string[]) => [...Array<string>(Math.round(words.length * 1.5)).fill(''), ...words]
+
+// The parts that carry a mood: what chat says about the code and how it signs off.
+function moodOf(mode: Mode) {
+  if (mode === 'hype') return { verdict: PRAISE, adj: NICE_ADJ, end: endings(HYPE) }
+  if (mode === 'wholesome') return { verdict: PRAISE, adj: NICE_ADJ, end: endings(WARM) }
+  if (mode === 'roast') return { verdict: SHADE, adj: MEAN_ADJ, end: endings([...LAUGH, ...SAD]) }
+  return { verdict: [...PRAISE, ...SHADE], adj: [...NICE_ADJ, ...MEAN_ADJ], end: endings([...EMOTES, ...LAUGH, ...HYPE, ...SAD]) }
+}
+
 // Each template is a row of fixed text and word lists; one line picks one word from every list.
-const TEMPLATES: readonly (readonly Part[])[] = [
-  [OPEN, THINGS, PRED, TAIL],
-  [THINGS, PRED, TAIL],
-  [THINGS, 'looking', ADJ, TAIL],
-  [GREET, WHO, TAIL],
-  [CHECKIN, PLACES, TAIL],
-  [LANGS, CMP, LANGS, TAIL],
-  ['just rewrite it in', LANGS, TAIL],
-  ['this would be 3 lines in', LANGS, TAIL],
-  [BRB, SNACK, TAIL],
-  ['been', WATCH, 'for', TIMES, TAIL],
-  [QSTART, THINGS, QEND],
-  ['who touched', THINGS, TAIL],
-  [ADJ, 'stream today', TAIL],
-  ['the vibes are', ADJ, TAIL],
-  [EMOTES, EMOTES, EMOTES],
-  [LAUGH, LAUGH, TAIL],
-  [HYPE, HYPE, HYPE],
-]
+function templatesFor(mode: Mode): readonly (readonly Part[])[] {
+  const { verdict, adj, end } = moodOf(mode)
+  return [
+    [OPEN, THINGS, verdict, end],
+    [THINGS, verdict, end],
+    [THINGS, 'looking', adj, end],
+    [GREET, WHO, end],
+    [CHECKIN, PLACES, end],
+    [VERSUS, end],
+    ['just rewrite it in', LANGS, end],
+    ['this would be 3 lines in', LANGS, end],
+    [BRB, SNACK, end],
+    ['been', WATCH, 'for', TIMES, end],
+    [QSTART, THINGS, QEND],
+    ['who touched', THINGS, end],
+    [adj, 'stream today', end],
+    ['the vibes are', adj, end],
+  ]
+}
 
-const parts = (t: readonly Part[]) => t.filter((p): p is readonly string[] => typeof p !== 'string')
+const sizeOf = (t: readonly Part[]) =>
+  t.reduce((m, p) => (typeof p === 'string' ? m : m * new Set(p).size), 1)
 
-const sizeOf = (t: readonly Part[]) => parts(t).reduce((m, words) => m * new Set(words).size, 1)
+// Template combinations available in a mode: the sum over templates of their lists' distinct sizes multiplied.
+export const templateCombos = (mode: Mode) => templatesFor(mode).reduce((n, t) => n + sizeOf(t), 0)
 
-// Distinct template lines possible: the sum over templates of their lists' sizes multiplied.
-export const templateCount = TEMPLATES.reduce((n, t) => n + sizeOf(t), 0)
+// Per mode, big templates are picked more often than small ones (by the square root of their size),
+// so a greeting does not come up as often as a full sentence about the code.
+const BY_MODE_TEMPLATES = Object.fromEntries(
+  (['hype', 'roast', 'mixed', 'curious', 'wholesome', 'chaos'] as const).map(mode => {
+    const templates = templatesFor(mode)
+    const weights = templates.map(t => Math.sqrt(sizeOf(t)))
+    return [mode, { templates, weights, total: weights.reduce((a, b) => a + b, 0) }]
+  }),
+) as Record<Mode, { templates: readonly (readonly Part[])[]; weights: number[]; total: number }>
 
-// Big templates are picked more often than small ones (by the square root of their size),
-// so a three-emote line does not come up as often as a full sentence.
-const WEIGHTS = TEMPLATES.map(t => Math.sqrt(sizeOf(t)))
-const TOTAL_WEIGHT = WEIGHTS.reduce((a, b) => a + b, 0)
-
-function pickTemplate(rand: Rand) {
-  let left = rand() * TOTAL_WEIGHT
-  for (let i = 0; i < TEMPLATES.length; i++) {
-    left -= WEIGHTS[i]!
-    if (left < 0) return TEMPLATES[i]!
+function pickTemplate(mode: Mode, rand: Rand) {
+  const { templates, weights, total } = BY_MODE_TEMPLATES[mode]
+  let left = rand() * total
+  for (let i = 0; i < templates.length; i++) {
+    left -= weights[i]!
+    if (left < 0) return templates[i]!
   }
-  return TEMPLATES[TEMPLATES.length - 1]!
+  return templates[templates.length - 1]!
 }
 
 const fill = (t: readonly Part[], r: Rand) =>
-  t.map(p => (typeof p === 'string' ? p : pick(p, r))).filter(Boolean).join(' ').replace(/ (\?|!|,)/g, '$1')
+  t.map(p => (typeof p === 'string' ? p : pick(p, r))).filter(Boolean).join(' ').replace(/ (\?|!)/g, '$1')
 
 const COMMON = [
   'first', 'second', 'is this live?', 'what are we building', 'what is he making', 'chat is this real',
@@ -232,10 +255,12 @@ export function cannedLine(mode: Mode, last: Activity | undefined, rand: Rand = 
   const about = subject(last)
   if (about && roll < 0.08) return pick(ABOUT, rand)(about, rand)
   const react = last && REACT[last.kind]
-  if (react && roll < 0.15) return pick(react, rand)
-  if (roll < 0.2) return pick(BY_MODE[mode], rand)
-  if (roll < 0.24) return pick(COMMON, rand)
-  return fill(pickTemplate(rand), rand)
+  if (react && roll < 0.2) return pick(react, rand)
+  // Mode lines get a fixed share whatever just happened, so the mode always shows.
+  const flavour = rand()
+  if (flavour < 0.2) return pick(BY_MODE[mode], rand)
+  if (flavour < 0.26) return pick(COMMON, rand)
+  return fill(pickTemplate(mode, rand), rand)
 }
 
 // Lines and names shown lately, so the same thing does not come back a minute later.

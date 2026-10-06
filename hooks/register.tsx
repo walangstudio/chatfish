@@ -16,8 +16,9 @@ const config = atom({ plugin: 'chatfish', key: 'config' } as const, DEFAULT_CONF
 const lines = atom({ plugin: 'chatfish', key: 'lines' } as const, [])
 const activity = atom({ plugin: 'chatfish', key: 'activity' } as const, [])
 const viewerCount = atom({ plugin: 'chatfish', key: 'viewers' } as const, 0)
-// What is typed in the pane's input; drawn back as its value so a send can empty it.
-const draft = atom({ plugin: 'chatfish', key: 'draft' } as const, '')
+// Bumped per message sent from the pane. It keys the input, so each send draws a fresh, empty field;
+// the text stays with the host while typing, so keystrokes never re-render the pane.
+const sentCount = atom({ plugin: 'chatfish', key: 'sent' } as const, 0)
 // In $.state, not the module, so a hot reload does not load saved settings over newer ones.
 const isSettingsLoaded = atom({ plugin: 'chatfish', key: 'isSettingsLoaded' } as const, false)
 
@@ -360,7 +361,7 @@ export const register: Register = on => {
     const cfg = await read($, config)
     const all = await read($, lines)
     const watching = await read($, viewerCount)
-    const typed = await read($, draft)
+    const sent = await read($, sentCount)
     // Desktop draws its own field chrome and a proportional font, so cell-based rules look broken there.
     const isDesktop = e.surface === 'desktop'
     const mention = new RegExp(`@${escapeRe(streamerName(cfg))}(?![\\p{L}\\p{N}_])`, 'iu')
@@ -432,14 +433,13 @@ export const register: Register = on => {
             {...(isDesktop ? { paddingX: 1, paddingY: 1 } : { marginX: 1, borderStyle: 'round' as const, borderColor: TW.input })}
           >
             <els.Input
-              key="send"
+              key={`send-${sent}`}
               placeholder="Send a message"
               submitLabel="Chat"
-              value={typed}
-              onInput={text => void update($, draft, () => text)}
               onSubmit={async text => {
-                // Empty the field first, so anything typed while the message posts is kept.
-                await update($, draft, () => '')
+                // Swap in the empty field before anything slow, then hand the keyboard to it.
+                const n = await update($, sentCount, c => c + 1)
+                void $.ui.focus({ requestId: PANE, key: `send-${n}` }).catch(() => {})
                 const message = text.trim()
                 const now = await read($, config)
                 if (message && now.live) await say($, now, message)

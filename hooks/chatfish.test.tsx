@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { cannedChat, cannedLine, cannedName, subject, templateCount } from './canned'
+import { cannedChat, cannedLine, cannedName, subject, templateCombos } from './canned'
 
 import { MIN_CLAUDE_CODE, NEW_CROWD, batchSize, isOlderThan, emotify, liveViewers, maybeRaid, nextViewers, parseArgs, parseConfig, parseModelLines, stepCrowd, toHandle, formatViewers, fromSaved, systemPrompt, userPrompt } from './chat'
 
@@ -332,22 +332,31 @@ test('the pane input starts empty again after each message', async ($, on) => {
   await $.command.run(run('live'))
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'chatfish', surface, ...PANE })
-    await ui.input({ key: 'send', text: 'hello chat', kind: 'change' })
-    expect((await ui.find({ type: 'Input' }))!.props.value).toBe('hello chat')
-    await ui.input({ key: 'send', text: 'hello chat' })
+    const before = await ui.find({ type: 'Input' })
+    await ui.input({ key: before!.key!, text: 'hello chat' })
     const after = await ui.find({ type: 'Input' })
-    expect(after!.key).toBe('send')
-    expect(after!.props.value).toBe('')
+    expect(after!.key).not.toBe(before!.key)
+    expect(after!.props.value).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /hello chat/ })).toBeDefined()
     await ui.unmount()
   }
   await $.command.run(run('off'))
 })
 
-test('offline chat has over a million distinct template lines and rarely repeats', async () => {
-  expect(templateCount).toBeGreaterThan(1_000_000)
+test('offline chat has a big pool per mode, keeps the mode, and reads cleanly', async () => {
+  expect(templateCombos('mixed')).toBeGreaterThan(1_000_000)
+  for (const mode of ['hype', 'roast', 'wholesome', 'curious', 'chaos'] as const) expect(templateCombos(mode)).toBeGreaterThan(100_000)
   const seen = new Set<string>()
   for (let i = 0; i < 20_000; i++) seen.add(cannedLine('mixed', undefined))
-  expect(seen.size).toBeGreaterThan(14_000)
-  expect([...seen].some(l => /\s{2}|\s$|^\s/.test(l))).toBe(false)
+  expect(seen.size).toBeGreaterThan(12_000)
+  const lines = [...seen]
+  expect(lines.some(l => /\s{2}|\s$|^\s/.test(l))).toBe(false)
+  expect(lines.some(l => /(\w+) (>|vs|is better than|is just worse than|could never beat) /.test(l))).toBe(false)
+  expect(lines.some(l => /^how does /.test(l))).toBe(false)
+  const roast = Array.from({ length: 5_000 }, () => cannedLine('roast', undefined))
+  expect(roast.some(l => /is goated|is immaculate|sparks joy/.test(l))).toBe(false)
+  const wholesome = Array.from({ length: 5_000 }, () => cannedLine('wholesome', undefined))
+  expect(wholesome.some(l => /is a crime|needs therapy|is why prod is down/.test(l))).toBe(false)
+  const bare = lines.filter(l => !/(KEKW|LUL|OMEGALUL|Pog|PogChamp|POGGERS|Kappa|monkaS|PepeHands|catJAM|5Head|Clueless|Copium|LMAO|XD|ICANT|F|oof|rip|Sadge|W|GG|HUGE|sheesh)$/.test(l))
+  expect(bare.length / lines.length).toBeGreaterThan(0.4)
 })
